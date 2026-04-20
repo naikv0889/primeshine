@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Elements } from '@stripe/react-stripe-js';
 import { SERVICES, ADDONS, VEHICLE_TYPES } from '../../data/services';
 import { VEHICLE_ICONS } from '../../data/vehicles';
 import { WEATHER_FORECAST } from '../../data/reviews';
+import { getStripe } from '../../lib/stripe';
+import { createBooking } from '../../lib/api';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import Eyebrow from '../../components/Eyebrow';
 import WxIcon from '../../components/WxIcon';
+import StripeCheckout from '../../components/StripeCheckout';
 
 const Stepper = ({ step }) => {
   const steps = [{ n: 1, l: 'Service' },{ n: 2, l: 'Vehicle' },{ n: 3, l: 'Schedule' },{ n: 4, l: 'Payment' }];
@@ -210,8 +214,31 @@ const BookStep3 = ({ state, setState, next, prev }) => {
   );
 };
 
-const BookStep4 = ({ state, setState, next, prev }) => {
+const BookStep4 = ({ state, setState, next, prev, total }) => {
   const [method, setMethod] = useState('card');
+  const stripePromise = getStripe();
+
+  const DemoCardForm = () => (
+    <div className="stripe-frame">
+      <div className="stripe-badge"><Icon name="lock" size={14}/> Powered by Stripe</div>
+      <div className="card-preview">
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', position:'relative', zIndex:2}}><div className="chip"/><div className="cbrand">VISA</div></div>
+        <div className="cnum">4242 4242 4242 ••••</div>
+        <div className="cbottom"><div><div className="clab">Cardholder</div><div className="cval">SAM RIVERA</div></div><div><div className="clab">Expires</div><div className="cval">04/28</div></div></div>
+      </div>
+      <div className="field"><label>Card number</label><input defaultValue="4242 4242 4242 4242"/></div>
+      <div className="field-row-3">
+        <div className="field"><label>Name on card</label><input defaultValue="Sam Rivera"/></div>
+        <div className="field"><label>Expiry</label><input defaultValue="04 / 28"/></div>
+        <div className="field"><label>CVC</label><input defaultValue="•••"/></div>
+      </div>
+      <div className="field"><label>Billing ZIP</label><input defaultValue="91101" style={{maxWidth:160}}/></div>
+      <label style={{display:'flex', alignItems:'center', gap:10, fontSize:13, color:'var(--text)', marginTop:8}}>
+        <input type="checkbox" defaultChecked/> Save this card for faster future bookings (Stripe Link)
+      </label>
+    </div>
+  );
+
   return (
     <div className="fade-in">
       <h2 className="booking-title">How would you like to pay?</h2>
@@ -231,24 +258,13 @@ const BookStep4 = ({ state, setState, next, prev }) => {
         </div>
       </div>
       {method === 'card' && (
-        <div className="stripe-frame">
-          <div className="stripe-badge"><Icon name="lock" size={14}/> Powered by Stripe</div>
-          <div className="card-preview">
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', position:'relative', zIndex:2}}><div className="chip"/><div className="cbrand">VISA</div></div>
-            <div className="cnum">4242 4242 4242 ••••</div>
-            <div className="cbottom"><div><div className="clab">Cardholder</div><div className="cval">SAM RIVERA</div></div><div><div className="clab">Expires</div><div className="cval">04/28</div></div></div>
-          </div>
-          <div className="field"><label>Card number</label><input defaultValue="4242 4242 4242 4242"/></div>
-          <div className="field-row-3">
-            <div className="field"><label>Name on card</label><input defaultValue="Sam Rivera"/></div>
-            <div className="field"><label>Expiry</label><input defaultValue="04 / 28"/></div>
-            <div className="field"><label>CVC</label><input defaultValue="•••"/></div>
-          </div>
-          <div className="field"><label>Billing ZIP</label><input defaultValue="91101" style={{maxWidth:160}}/></div>
-          <label style={{display:'flex', alignItems:'center', gap:10, fontSize:13, color:'var(--text)', marginTop:8}}>
-            <input type="checkbox" defaultChecked/> Save this card for faster future bookings (Stripe Link)
-          </label>
-        </div>
+        stripePromise ? (
+          <Elements stripe={stripePromise}>
+            <StripeCheckout total={total} onSuccess={(pmId) => { setState({ ...state, paymentMethodId: pmId }); next(); }} />
+          </Elements>
+        ) : (
+          <DemoCardForm />
+        )
       )}
       {method === 'apple' && (
         <div style={{padding:40, textAlign:'center', background:'var(--muted)', borderRadius:'var(--r-lg)', marginBottom:16}}>
@@ -269,10 +285,18 @@ const BookStep4 = ({ state, setState, next, prev }) => {
         </div>
       )}
       <div className="pay-notice"><Icon name="info" size={18}/><div><strong>No charge until complete.</strong> We pre-authorize to hold the appointment. Your card is only charged after walk-around inspection. Cancel free up to 2 hours before your slot.</div></div>
-      <div className="booking-nav">
-        <Button variant="tertiary" onClick={prev} icon="arrowLeft">Back</Button>
-        <Button variant="primary" onClick={next} icon="lock">Confirm & Pre-authorize</Button>
-      </div>
+      {!stripePromise && (
+        <div className="booking-nav">
+          <Button variant="tertiary" onClick={prev} icon="arrowLeft">Back</Button>
+          <Button variant="primary" onClick={next} icon="lock">Confirm & Pre-authorize</Button>
+        </div>
+      )}
+      {stripePromise && method !== 'card' && (
+        <div className="booking-nav">
+          <Button variant="tertiary" onClick={prev} icon="arrowLeft">Back</Button>
+          <Button variant="primary" onClick={next} icon="lock">Confirm & Pre-authorize</Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -306,6 +330,16 @@ const BookingFlow = () => {
   const [state, setState] = useState({ service: 'signature', vehicleType: 'sedan', addons: [], day: null, date: null, time: null, make: '', year: '', color: '', notes: '', address: '', city: '', st: 'CA', zip: '' });
   const stepNum = parseInt(step);
   const go = (n) => { navigate(`/book/${n}`); window.scrollTo(0,0); };
+
+  // Compute total for payment step
+  const svc = SERVICES.find(s => s.id === state.service);
+  const vt = VEHICLE_TYPES.find(v => v.id === state.vehicleType);
+  const base = svc ? Math.round(svc.priceFrom * (vt?.multiplier || 1)) : 0;
+  const addonsTotal = state.addons.reduce((sum, id) => sum + (ADDONS.find(a => a.id === id)?.price || 0), 0);
+  const subtotal = base + addonsTotal;
+  const tax = Math.round(subtotal * 0.0975);
+  const total = subtotal + tax;
+
   return (
     <div className="page page-enter" style={{background:'var(--muted)', padding:'40px 0 80px'}}>
       <div className="container">
@@ -317,7 +351,7 @@ const BookingFlow = () => {
               {stepNum === 1 && <BookStep1 state={state} setState={setState} next={() => go(2)}/>}
               {stepNum === 2 && <BookStep2 state={state} setState={setState} next={() => go(3)} prev={() => go(1)}/>}
               {stepNum === 3 && <BookStep3 state={state} setState={setState} next={() => go(4)} prev={() => go(2)}/>}
-              {stepNum === 4 && <BookStep4 state={state} setState={setState} next={() => go(5)} prev={() => go(3)}/>}
+              {stepNum === 4 && <BookStep4 state={state} setState={setState} next={() => go(5)} prev={() => go(3)} total={total}/>}
             </div>
             <BookingSummary state={state}/>
           </div>
