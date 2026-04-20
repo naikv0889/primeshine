@@ -1,76 +1,108 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../lib/AuthContext';
+import { getBookings, getVehicles, getReviews, updateBooking, createVehicle, deleteVehicle } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { PORTAL_BOOKINGS, PORTAL_VEHICLES, WEATHER_FORECAST } from '../../data/reviews';
+import { SERVICES } from '../../data/services';
 import { VEHICLE_ICONS } from '../../data/vehicles';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import Stars from '../../components/Stars';
 import WxIcon from '../../components/WxIcon';
 
-const PortalOverview = ({ navigate, setTab }) => (
-  <div className="fade-in">
-    <div className="dash-head">
-      <div><div style={{fontSize:13, color:'var(--text-mute)', letterSpacing:'0.05em', textTransform:'uppercase', fontWeight:600}}>Welcome back</div><h1>Sam Rivera</h1></div>
-      <Button variant="primary" onClick={() => navigate('/book/1')} icon="plus">Book a detail</Button>
-    </div>
-    <div style={{background:'linear-gradient(135deg, var(--navy) 0%, #1C3057 100%)', color:'#fff', padding:32, borderRadius:'var(--r-lg)', marginBottom:32, position:'relative', overflow:'hidden'}}>
-      <div style={{position:'absolute', top:0, right:0, width:240, height:240, background:'radial-gradient(circle at 100% 0%, rgba(188,49,40,0.2), transparent 60%)'}}/>
-      <div style={{position:'relative', display:'grid', gridTemplateColumns:'1fr auto', gap:32, alignItems:'center'}}>
-        <div>
-          <div style={{fontSize:12, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7, fontWeight:600}}>Your next detail</div>
-          <h2 style={{color:'#fff', fontSize:30, marginTop:8, marginBottom:4}}>Signature Detail · 2021 Honda Civic</h2>
-          <div style={{fontSize:16, opacity:0.85, marginBottom:20}}>Friday, March 14 · 10:00 AM – 12:30 PM</div>
-          <div style={{display:'flex', gap:24, flexWrap:'wrap', fontSize:13, opacity:0.85}}>
-            <div style={{display:'flex', gap:8, alignItems:'center'}}><Icon name="location" size={14}/> 412 Los Robles Ave</div>
-            <div style={{display:'flex', gap:8, alignItems:'center'}}><Icon name="user" size={14}/> Jason M.</div>
-            <div style={{display:'flex', gap:8, alignItems:'center'}}><WxIcon type="sun" size={16}/><span>72°, sunny. Ideal conditions</span></div>
-          </div>
-        </div>
-        <div style={{textAlign:'right'}}>
-          <div style={{fontSize:11, opacity:0.6, letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:6}}>In</div>
-          <div style={{fontSize:54, fontWeight:700, letterSpacing:'-0.02em', lineHeight:1}}>2<span style={{fontSize:22, marginLeft:4, opacity:0.8}}>days</span></div>
-          <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:20}}>
-            <Button variant="on-dark" size="sm">Reschedule</Button>
-            <Button variant="ghost" size="sm" onClick={() => setTab('bookings')}>Details</Button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4, 1fr)'}}>
-      {[{l:'Details completed',v:'14',d:'+2 this quarter'},{l:'Lifetime spend',v:'$2,180',d:'Tier: Regular'},{l:'Last review',v:'5.0',d:'Feb 22 · Express'},{l:'Loyalty credit',v:'$25',d:'Expires in 60 days'}].map((k,i) => (
-        <div key={i} className="kpi"><div className="kpi-lab">{k.l}</div><div className="kpi-val">{k.v}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:6}}>{k.d}</div></div>
-      ))}
-    </div>
-    <div className="dash-row" style={{marginTop:24}}>
-      <div className="dash-card">
-        <div className="dash-card-head"><h3>Recent bookings</h3><a style={{fontSize:13, fontWeight:600, cursor:'pointer'}} onClick={() => setTab('bookings')}>View all →</a></div>
-        <div className="portal-bookings">
-          {PORTAL_BOOKINGS.slice(0,3).map(b => (
-            <div key={b.id} className="pb-item" style={{padding:16, boxShadow:'none', border:'1px solid var(--divider-soft)'}}>
-              <div className="pb-when"><div className="d">{b.day}</div><div className="m">{b.month}</div></div>
-              <div className="pb-body"><div className="tt">{b.svc}</div><div className="sub">{b.vehicle} · {b.time}</div></div>
-              <div><span className={`badge ${b.statusClass}`}><span className="dot"/>{b.status}</span></div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="wx-widget" style={{padding:'var(--sp-5)'}}>
-        <div className="wx-widget-head">
-          <div><div style={{fontSize:12, opacity:0.85}}>Your next slot</div><div style={{fontSize:11, opacity:0.6, letterSpacing:'0.05em', textTransform:'uppercase'}}>Mar 14, 10 AM</div></div>
-          <div className="wx-score ok">Ideal</div>
-        </div>
-        <div className="wx-widget-now"><div><div className="temp">72<sup>°</sup></div><div className="cond">Sunny</div></div><WxIcon type="sun" size={56}/></div>
-        <div style={{marginTop:20, fontSize:12, opacity:0.8, lineHeight:1.5}}>Forecast holding steady. We'll text you if anything changes within 24 hours of your slot.</div>
-      </div>
-    </div>
-  </div>
-);
+// Format a booking from Supabase shape to display shape
+const fmtBooking = (b) => {
+  const d = new Date(b.scheduled_date);
+  const svc = SERVICES.find(s => s.id === b.service_id);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return {
+    id: b.booking_number || b.id,
+    date: `${months[d.getMonth()]} ${d.getDate()}`,
+    day: d.getDate(),
+    month: months[d.getMonth()],
+    time: b.scheduled_time,
+    svc: svc?.name || b.service_id,
+    vehicle: b.vehicles ? `${b.vehicles.year} ${b.vehicles.make} ${b.vehicles.model}` : '',
+    status: b.status.charAt(0).toUpperCase() + b.status.slice(1),
+    statusClass: b.status === 'confirmed' ? 'ok' : b.status === 'completed' ? 'info' : b.status === 'cancelled' ? 'red' : 'pending',
+    addr: b.address || '',
+    price: b.total || 0,
+    _raw: b,
+  };
+};
 
-const PortalBookings = ({ navigate }) => (
+const PortalOverview = ({ navigate, setTab, bookings, userName }) => {
+  const next = bookings.find(b => b.status === 'Confirmed');
+  return (
+    <div className="fade-in">
+      <div className="dash-head">
+        <div><div style={{fontSize:13, color:'var(--text-mute)', letterSpacing:'0.05em', textTransform:'uppercase', fontWeight:600}}>Welcome back</div><h1>{userName}</h1></div>
+        <Button variant="primary" onClick={() => navigate('/book/1')} icon="plus">Book a detail</Button>
+      </div>
+      {next && (
+        <div style={{background:'linear-gradient(135deg, var(--navy) 0%, #1C3057 100%)', color:'#fff', padding:32, borderRadius:'var(--r-lg)', marginBottom:32, position:'relative', overflow:'hidden'}}>
+          <div style={{position:'absolute', top:0, right:0, width:240, height:240, background:'radial-gradient(circle at 100% 0%, rgba(188,49,40,0.2), transparent 60%)'}}/>
+          <div style={{position:'relative', display:'grid', gridTemplateColumns:'1fr auto', gap:32, alignItems:'center'}}>
+            <div>
+              <div style={{fontSize:12, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7, fontWeight:600}}>Your next detail</div>
+              <h2 style={{color:'#fff', fontSize:30, marginTop:8, marginBottom:4}}>{next.svc} · {next.vehicle}</h2>
+              <div style={{fontSize:16, opacity:0.85, marginBottom:20}}>{next.date} · {next.time}</div>
+              <div style={{display:'flex', gap:24, flexWrap:'wrap', fontSize:13, opacity:0.85}}>
+                {next.addr && <div style={{display:'flex', gap:8, alignItems:'center'}}><Icon name="location" size={14}/> {next.addr}</div>}
+                <div style={{display:'flex', gap:8, alignItems:'center'}}><WxIcon type="sun" size={16}/><span>Ideal conditions</span></div>
+              </div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:20}}>
+                <Button variant="on-dark" size="sm">Reschedule</Button>
+                <Button variant="ghost" size="sm" onClick={() => setTab('bookings')}>Details</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4, 1fr)'}}>
+        {[
+          {l:'Details completed', v: String(bookings.filter(b => b.status === 'Completed').length), d: 'All time'},
+          {l:'Lifetime spend', v: '$' + bookings.reduce((s,b) => s + b.price, 0).toLocaleString(), d: 'Total'},
+          {l:'Last review', v: '5.0', d: 'Keep it up'},
+          {l:'Loyalty credit', v: '$25', d: 'Expires in 60 days'},
+        ].map((k,i) => (
+          <div key={i} className="kpi"><div className="kpi-lab">{k.l}</div><div className="kpi-val">{k.v}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:6}}>{k.d}</div></div>
+        ))}
+      </div>
+      <div className="dash-row" style={{marginTop:24}}>
+        <div className="dash-card">
+          <div className="dash-card-head"><h3>Recent bookings</h3><a style={{fontSize:13, fontWeight:600, cursor:'pointer'}} onClick={() => setTab('bookings')}>View all →</a></div>
+          <div className="portal-bookings">
+            {bookings.slice(0,3).map(b => (
+              <div key={b.id} className="pb-item" style={{padding:16, boxShadow:'none', border:'1px solid var(--divider-soft)'}}>
+                <div className="pb-when"><div className="d">{b.day}</div><div className="m">{b.month}</div></div>
+                <div className="pb-body"><div className="tt">{b.svc}</div><div className="sub">{b.vehicle} · {b.time}</div></div>
+                <div><span className={`badge ${b.statusClass}`}><span className="dot"/>{b.status}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="wx-widget" style={{padding:'var(--sp-5)'}}>
+          <div className="wx-widget-head">
+            <div><div style={{fontSize:12, opacity:0.85}}>Your next slot</div><div style={{fontSize:11, opacity:0.6, letterSpacing:'0.05em', textTransform:'uppercase'}}>{next ? `${next.date}, ${next.time}` : 'None booked'}</div></div>
+            <div className="wx-score ok">Ideal</div>
+          </div>
+          <div className="wx-widget-now"><div><div className="temp">72<sup>°</sup></div><div className="cond">Sunny</div></div><WxIcon type="sun" size={56}/></div>
+          <div style={{marginTop:20, fontSize:12, opacity:0.8, lineHeight:1.5}}>Forecast holding steady. We'll text you if anything changes within 24 hours of your slot.</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PortalBookings = ({ navigate, bookings, onCancel }) => (
   <div className="fade-in">
     <div className="dash-head"><div><h1>My bookings</h1><p className="muted" style={{marginTop:4}}>Upcoming and past detail jobs.</p></div><Button variant="primary" icon="plus" onClick={() => navigate('/book/1')}>New booking</Button></div>
     <div className="portal-bookings">
-      {PORTAL_BOOKINGS.map(b => (
+      {bookings.map(b => (
         <div key={b.id} className="pb-item">
           <div className="pb-when"><div className="d">{b.day}</div><div className="m">{b.month}</div></div>
           <div className="pb-body">
@@ -79,32 +111,84 @@ const PortalBookings = ({ navigate }) => (
             <div className="chips"><span className={`badge ${b.statusClass}`}><span className="dot"/>{b.status}</span><span className="badge pending">${b.price}</span></div>
           </div>
           <div style={{display:'flex', gap:8}}>
-            {b.status === 'Confirmed' ? (<><Button variant="secondary" size="sm">Reschedule</Button><Button variant="danger" size="sm">Cancel</Button></>) : (<><Button variant="secondary" size="sm" icon="star">Review</Button><Button variant="tertiary" size="sm" icon="download">Receipt</Button></>)}
+            {b.status === 'Confirmed' ? (
+              <>
+                <Button variant="secondary" size="sm">Reschedule</Button>
+                <Button variant="danger" size="sm" onClick={() => onCancel(b)}>Cancel</Button>
+              </>
+            ) : (
+              <>
+                <Button variant="secondary" size="sm" icon="star">Review</Button>
+                <Button variant="tertiary" size="sm" icon="download">Receipt</Button>
+              </>
+            )}
           </div>
         </div>
       ))}
+      {bookings.length === 0 && (
+        <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>
+          <p>No bookings yet.</p>
+          <Button variant="primary" onClick={() => navigate('/book/1')} style={{marginTop:16}}>Book your first detail</Button>
+        </div>
+      )}
     </div>
   </div>
 );
 
-const PortalVehicles = () => (
-  <div className="fade-in">
-    <div className="dash-head"><div><h1>My vehicles</h1><p className="muted" style={{marginTop:4}}>Save vehicles for faster booking.</p></div><Button variant="primary" icon="plus">Add vehicle</Button></div>
-    <div style={{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16}}>
-      {PORTAL_VEHICLES.map(v => (
-        <div key={v.id} className="dash-card" style={{display:'flex', gap:20, padding:24}}>
-          <div style={{width:120, height:80, background:'var(--muted)', borderRadius:'var(--r-md)', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--navy)', flexShrink:0}}>{VEHICLE_ICONS.sedan}</div>
-          <div style={{flex:1}}>
-            <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:2}}><h3 style={{fontSize:18}}>{v.year} {v.make} {v.model}</h3>{v.isPrimary && <span className="badge red">Primary</span>}</div>
-            <div style={{fontSize:13, color:'var(--text-mute)'}}>{v.color} · {v.plate}</div>
-            <div style={{display:'flex', gap:16, marginTop:14, fontSize:12, color:'var(--text-mute)'}}><div><strong style={{color:'var(--navy)', fontSize:15}}>{v.visits}</strong> visits</div><div><strong style={{color:'var(--navy)', fontSize:15}}>Mar 14</strong> next</div></div>
-            <div style={{display:'flex', gap:6, marginTop:14}}><Button variant="tertiary" size="sm" icon="edit">Edit</Button><Button variant="tertiary" size="sm" icon="trash">Remove</Button></div>
+const PortalVehicles = ({ vehicles, onAdd, onDelete }) => {
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ make: '', model: '', year: '', color: '', plate: '' });
+
+  const handleAdd = async () => {
+    if (!form.make || !form.model) return;
+    await onAdd({ ...form, year: parseInt(form.year) || null, vehicle_type: 'sedan', is_primary: vehicles.length === 0 });
+    setForm({ make: '', model: '', year: '', color: '', plate: '' });
+    setAdding(false);
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="dash-head"><div><h1>My vehicles</h1><p className="muted" style={{marginTop:4}}>Save vehicles for faster booking.</p></div><Button variant="primary" icon="plus" onClick={() => setAdding(true)}>Add vehicle</Button></div>
+      {adding && (
+        <div className="dash-card fade-in" style={{marginBottom:16}}>
+          <h3 style={{marginBottom:16}}>New vehicle</h3>
+          <div className="field-row">
+            <div className="field"><label>Make</label><input placeholder="Honda" value={form.make} onChange={e => setForm({...form, make: e.target.value})}/></div>
+            <div className="field"><label>Model</label><input placeholder="Civic" value={form.model} onChange={e => setForm({...form, model: e.target.value})}/></div>
+          </div>
+          <div className="field-row">
+            <div className="field"><label>Year</label><input placeholder="2021" value={form.year} onChange={e => setForm({...form, year: e.target.value})}/></div>
+            <div className="field"><label>Color</label><input placeholder="Pearl White" value={form.color} onChange={e => setForm({...form, color: e.target.value})}/></div>
+            <div className="field"><label>Plate</label><input placeholder="7ABC123" value={form.plate} onChange={e => setForm({...form, plate: e.target.value})}/></div>
+          </div>
+          <div style={{display:'flex', gap:8}}>
+            <Button variant="primary" onClick={handleAdd} disabled={!form.make || !form.model}>Save vehicle</Button>
+            <Button variant="tertiary" onClick={() => setAdding(false)}>Cancel</Button>
           </div>
         </div>
-      ))}
+      )}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16}}>
+        {vehicles.map(v => (
+          <div key={v.id} className="dash-card" style={{display:'flex', gap:20, padding:24}}>
+            <div style={{width:120, height:80, background:'var(--muted)', borderRadius:'var(--r-md)', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--navy)', flexShrink:0}}>{VEHICLE_ICONS[v.vehicle_type || 'sedan']}</div>
+            <div style={{flex:1}}>
+              <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:2}}>
+                <h3 style={{fontSize:18}}>{v.year} {v.make} {v.model}</h3>
+                {v.isPrimary && <span className="badge red">Primary</span>}
+                {v.is_primary && <span className="badge red">Primary</span>}
+              </div>
+              <div style={{fontSize:13, color:'var(--text-mute)'}}>{v.color}{v.plate ? ` · ${v.plate}` : ''}</div>
+              <div style={{display:'flex', gap:6, marginTop:14}}>
+                <Button variant="tertiary" size="sm" icon="edit">Edit</Button>
+                <Button variant="tertiary" size="sm" icon="trash" onClick={() => onDelete(v.id)}>Remove</Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const PortalPayments = () => (
   <div className="fade-in">
@@ -154,28 +238,47 @@ const PortalReviews = () => (
   </div>
 );
 
-const PortalSettings = () => {
-  const [profile, setProfile] = useState({ name: 'Sam Rivera', email: 'sam@example.com', phone: '(626) 555-0112', address: '412 Los Robles Ave, Pasadena CA 91101' });
+const PortalSettings = ({ userName }) => {
+  const { user: authUser, profile } = useAuth();
+  const [profileForm, setProfileForm] = useState({
+    name: profile?.full_name || userName || 'Sam Rivera',
+    email: profile?.email || 'sam@example.com',
+    phone: profile?.phone || '(626) 555-0112',
+    address: profile?.default_address || '412 Los Robles Ave, Pasadena CA 91101',
+  });
   const [saved, setSaved] = useState(false);
   const [notifs, setNotifs] = useState([true, true, true, false]);
   const toggleNotif = (idx) => { const n = [...notifs]; n[idx] = !n[idx]; setNotifs(n); };
-  const saveProfile = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  const saveProfile = async () => {
+    if (supabase && authUser) {
+      await supabase.from('profiles').update({
+        full_name: profileForm.name,
+        phone: profileForm.phone,
+        default_address: profileForm.address,
+      }).eq('id', authUser.id);
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
   const notifItems = [
     {t:'Booking confirmations',d:'Email + SMS when we confirm a slot'},
     {t:'Arrival updates',d:'"10 min out" text from your detailer'},
     {t:'Weather alerts',d:'Proactive rescheduling suggestions'},
     {t:'Marketing',d:'Seasonal specials, no more than monthly'},
   ];
+
   return (
     <div className="fade-in">
       <div className="dash-head"><div><h1>Settings</h1></div></div>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
         <div className="dash-card">
           <h3 style={{marginBottom:20}}>Profile</h3>
-          <div className="field"><label>Full name</label><input value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})}/></div>
-          <div className="field"><label>Email</label><input value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})}/></div>
-          <div className="field"><label>Phone</label><input value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})}/></div>
-          <div className="field"><label>Default address</label><input value={profile.address} onChange={e => setProfile({...profile, address: e.target.value})}/></div>
+          <div className="field"><label>Full name</label><input value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})}/></div>
+          <div className="field"><label>Email</label><input value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})}/></div>
+          <div className="field"><label>Phone</label><input value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})}/></div>
+          <div className="field"><label>Default address</label><input value={profileForm.address} onChange={e => setProfileForm({...profileForm, address: e.target.value})}/></div>
           <div style={{display:'flex', gap:12, alignItems:'center'}}>
             <Button variant="primary" onClick={saveProfile}>Save changes</Button>
             {saved && <span className="fade-in" style={{fontSize:13, color:'var(--success)', fontWeight:600}}>Saved!</span>}
@@ -200,11 +303,55 @@ const PortalSettings = () => {
 const PortalPage = () => {
   const [tab, setTab] = useState('overview');
   const navigate = useNavigate();
+  const { user: authUser, profile } = useAuth();
+
+  // Data state — starts with mock data, replaced by live data if Supabase is configured
+  const [bookings, setBookings] = useState(PORTAL_BOOKINGS);
+  const [vehicles, setVehicles] = useState(PORTAL_VEHICLES);
+  const [loading, setLoading] = useState(false);
+
+  const userName = profile?.full_name || 'Sam Rivera';
+
+  const loadData = useCallback(async () => {
+    if (!supabase || !authUser) return;
+    setLoading(true);
+    const [bRes, vRes] = await Promise.all([
+      getBookings(authUser.id),
+      getVehicles(authUser.id),
+    ]);
+    if (bRes.data?.length) setBookings(bRes.data.map(fmtBooking));
+    if (vRes.data?.length) setVehicles(vRes.data);
+    setLoading(false);
+  }, [authUser]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleCancel = async (booking) => {
+    if (booking._raw) {
+      await updateBooking(booking._raw.id, { status: 'cancelled' });
+    }
+    setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, status: 'Cancelled', statusClass: 'red' } : b));
+  };
+
+  const handleAddVehicle = async (v) => {
+    if (supabase && authUser) {
+      const { data } = await createVehicle({ ...v, owner_id: authUser.id });
+      if (data) { await loadData(); return; }
+    }
+    setVehicles(prev => [...prev, { ...v, id: 'V' + Date.now(), visits: 0 }]);
+  };
+
+  const handleDeleteVehicle = async (id) => {
+    await deleteVehicle(id);
+    setVehicles(prev => prev.filter(v => v.id !== id));
+  };
+
   const sideItems = [
     { id: 'overview', label: 'Overview', icon: 'home' },{ id: 'bookings', label: 'Bookings', icon: 'calendar' },
     { id: 'vehicles', label: 'Vehicles', icon: 'car' },{ id: 'payments', label: 'Payments', icon: 'credit' },
     { id: 'reviews', label: 'My reviews', icon: 'star' },{ id: 'settings', label: 'Settings', icon: 'settings' },
   ];
+
   return (
     <div className="dash-layout">
       <aside className="dash-side">
@@ -215,12 +362,13 @@ const PortalPage = () => {
         <a onClick={() => navigate('/weather')}><Icon name="sun" size={17}/> Weather check</a>
       </aside>
       <main className="dash-main">
-        {tab === 'overview' && <PortalOverview navigate={navigate} setTab={setTab}/>}
-        {tab === 'bookings' && <PortalBookings navigate={navigate}/>}
-        {tab === 'vehicles' && <PortalVehicles/>}
-        {tab === 'payments' && <PortalPayments/>}
-        {tab === 'reviews' && <PortalReviews/>}
-        {tab === 'settings' && <PortalSettings/>}
+        {loading && <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>Loading...</div>}
+        {!loading && tab === 'overview' && <PortalOverview navigate={navigate} setTab={setTab} bookings={bookings} userName={userName}/>}
+        {!loading && tab === 'bookings' && <PortalBookings navigate={navigate} bookings={bookings} onCancel={handleCancel}/>}
+        {!loading && tab === 'vehicles' && <PortalVehicles vehicles={vehicles} onAdd={handleAddVehicle} onDelete={handleDeleteVehicle}/>}
+        {!loading && tab === 'payments' && <PortalPayments/>}
+        {!loading && tab === 'reviews' && <PortalReviews/>}
+        {!loading && tab === 'settings' && <PortalSettings userName={userName}/>}
       </main>
     </div>
   );

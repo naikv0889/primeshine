@@ -301,19 +301,19 @@ const BookStep4 = ({ state, setState, next, prev, total }) => {
   );
 };
 
-const BookConfirm = ({ state, navigate }) => {
+const BookConfirm = ({ state, navigate, bookingId }) => {
   const svc = SERVICES.find(s => s.id === state.service);
   return (
     <div className="fade-in">
       <div className="confirm">
         <div className="ring"><Icon name="check" size={44} color="#fff" strokeWidth={3}/></div>
-        <Eyebrow>Booking confirmed · #B-2053</Eyebrow>
-        <h2 style={{marginTop:16, fontSize:36}}>See you soon, Sam.</h2>
-        <p>A confirmation text is on its way to (626) 555-0112, and the details are in your portal. We'll arrive in the first 15 minutes of your window. Watch for a "10 min out" text.</p>
+        <Eyebrow>Booking confirmed · #{bookingId}</Eyebrow>
+        <h2 style={{marginTop:16, fontSize:36}}>See you soon!</h2>
+        <p>A confirmation text is on its way, and the details are in your portal. We'll arrive in the first 15 minutes of your window. Watch for a "10 min out" text.</p>
         <div className="confirm-summary">
           <div><div className="lab">Service</div><div className="val">{svc?.name || 'Signature Detail'}</div></div>
-          <div><div className="lab">When</div><div className="val">Mar {state.day || 14}, {state.time || '10:00 AM'}</div></div>
-          <div><div className="lab">Where</div><div className="val">412 Los Robles Ave</div></div>
+          <div><div className="lab">When</div><div className="val">{state.date || 'Mar 14'}, {state.time || '10:00 AM'}</div></div>
+          <div><div className="lab">Where</div><div className="val">{state.address || 'Your address'}</div></div>
         </div>
         <div style={{display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap'}}>
           <Button variant="primary" onClick={() => navigate('/portal')} iconRight="arrow">Open my portal</Button>
@@ -328,8 +328,34 @@ const BookingFlow = () => {
   const { step } = useParams();
   const navigate = useNavigate();
   const [state, setState] = useState({ service: 'signature', vehicleType: 'sedan', addons: [], day: null, date: null, time: null, make: '', year: '', color: '', notes: '', address: '', city: '', st: 'CA', zip: '' });
+  const [bookingId, setBookingId] = useState('B-2053');
   const stepNum = parseInt(step);
-  const go = (n) => { navigate(`/book/${n}`); window.scrollTo(0,0); };
+
+  const go = async (n) => {
+    // When moving to confirmation (step 5), save the booking
+    if (n === 5) {
+      const bookingData = {
+        service_id: state.service,
+        addons: state.addons,
+        scheduled_date: state.date || `Mar ${state.day}`,
+        scheduled_time: state.time,
+        address: state.address,
+        city: state.city,
+        state: state.st,
+        zip: state.zip,
+        subtotal,
+        tax,
+        total,
+        notes: state.notes,
+        payment_method: state.paymentMethodId ? 'card' : 'demo',
+      };
+      const { data } = await createBooking(bookingData);
+      if (data?.booking_number) setBookingId(data.booking_number);
+      else if (data?.id) setBookingId(data.id.slice(0, 8));
+    }
+    navigate(`/book/${n}`);
+    window.scrollTo(0, 0);
+  };
 
   // Compute total for payment step
   const svc = SERVICES.find(s => s.id === state.service);
@@ -355,7 +381,7 @@ const BookingFlow = () => {
             </div>
             <BookingSummary state={state}/>
           </div>
-        ) : (<BookConfirm state={state} navigate={navigate}/>)}
+        ) : (<BookConfirm state={state} navigate={navigate} bookingId={bookingId}/>)}
       </div>
     </div>
   );

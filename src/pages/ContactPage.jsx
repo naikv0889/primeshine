@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sendContactMessage } from '../lib/api';
 import Icon from '../components/Icon';
 import Button from '../components/Button';
 import Eyebrow from '../components/Eyebrow';
@@ -19,8 +20,16 @@ const ContactPage = () => {
     return Object.keys(e).length === 0;
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!validate()) return;
+    await sendContactMessage({
+      first_name: form.first,
+      last_name: form.last,
+      email: form.email,
+      phone: form.phone,
+      topic: form.topic,
+      message: form.message,
+    });
     setSent(true);
   };
 
