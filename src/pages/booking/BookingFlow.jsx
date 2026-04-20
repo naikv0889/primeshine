@@ -106,11 +106,11 @@ const BookStep2 = ({ state, setState, next, prev }) => (
     </div>
     <h3 style={{fontSize:14, marginBottom:12, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-mute)'}}>Details</h3>
     <div className="field-row-3">
-      <div className="field"><label>Make & Model</label><input placeholder="e.g., Honda Civic" defaultValue="Honda Civic"/></div>
-      <div className="field"><label>Year</label><input placeholder="2021" defaultValue="2021"/></div>
-      <div className="field"><label>Color</label><input placeholder="Pearl White" defaultValue="Pearl White"/></div>
+      <div className="field"><label>Make & Model</label><input placeholder="e.g., Honda Civic" value={state.make} onChange={e => setState({ ...state, make: e.target.value })}/></div>
+      <div className="field"><label>Year</label><input placeholder="2021" value={state.year} onChange={e => setState({ ...state, year: e.target.value })}/></div>
+      <div className="field"><label>Color</label><input placeholder="Pearl White" value={state.color} onChange={e => setState({ ...state, color: e.target.value })}/></div>
     </div>
-    <div className="field"><label>Anything we should know?</label><textarea rows="3" placeholder="Pet hair, specific stains, recent paint work, allergies, etc."/></div>
+    <div className="field"><label>Anything we should know?</label><textarea rows="3" placeholder="Pet hair, specific stains, recent paint work, allergies, etc." value={state.notes} onChange={e => setState({ ...state, notes: e.target.value })}/></div>
     <div className="booking-nav">
       <Button variant="tertiary" onClick={prev} icon="arrowLeft">Back</Button>
       <Button variant="primary" onClick={next} disabled={!state.vehicleType} iconRight="arrow">Continue to schedule</Button>
@@ -195,11 +195,11 @@ const BookStep3 = ({ state, setState, next, prev }) => {
       </div>
       <div style={{marginTop:32}}>
         <h3 style={{fontSize:14, marginBottom:12, letterSpacing:'0.05em', textTransform:'uppercase', color:'var(--text-mute)'}}>Service address</h3>
-        <div className="field"><label>Street address</label><input defaultValue="412 Los Robles Ave"/></div>
+        <div className="field"><label>Street address</label><input placeholder="412 Los Robles Ave" value={state.address} onChange={e => setState({ ...state, address: e.target.value })}/></div>
         <div className="field-row-3">
-          <div className="field"><label>City</label><input defaultValue="Pasadena"/></div>
-          <div className="field"><label>State</label><input defaultValue="CA"/></div>
-          <div className="field"><label>ZIP</label><input defaultValue="91101"/></div>
+          <div className="field"><label>City</label><input placeholder="Pasadena" value={state.city} onChange={e => setState({ ...state, city: e.target.value })}/></div>
+          <div className="field"><label>State</label><input placeholder="CA" value={state.st} onChange={e => setState({ ...state, st: e.target.value })}/></div>
+          <div className="field"><label>ZIP</label><input placeholder="91101" value={state.zip} onChange={e => setState({ ...state, zip: e.target.value })}/></div>
         </div>
       </div>
       <div className="booking-nav">
@@ -303,7 +303,7 @@ const BookConfirm = ({ state, navigate }) => {
 const BookingFlow = () => {
   const { step } = useParams();
   const navigate = useNavigate();
-  const [state, setState] = useState({ service: 'signature', vehicleType: 'sedan', addons: [], day: null, date: null, time: null });
+  const [state, setState] = useState({ service: 'signature', vehicleType: 'sedan', addons: [], day: null, date: null, time: null, make: '', year: '', color: '', notes: '', address: '', city: '', st: 'CA', zip: '' });
   const stepNum = parseInt(step);
   const go = (n) => { navigate(`/book/${n}`); window.scrollTo(0,0); };
   return (

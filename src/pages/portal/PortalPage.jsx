@@ -154,32 +154,48 @@ const PortalReviews = () => (
   </div>
 );
 
-const PortalSettings = () => (
-  <div className="fade-in">
-    <div className="dash-head"><div><h1>Settings</h1></div></div>
-    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
-      <div className="dash-card">
-        <h3 style={{marginBottom:20}}>Profile</h3>
-        <div className="field"><label>Full name</label><input defaultValue="Sam Rivera"/></div>
-        <div className="field"><label>Email</label><input defaultValue="sam@example.com"/></div>
-        <div className="field"><label>Phone</label><input defaultValue="(626) 555-0112"/></div>
-        <div className="field"><label>Default address</label><input defaultValue="412 Los Robles Ave, Pasadena CA 91101"/></div>
-        <Button variant="primary">Save changes</Button>
-      </div>
-      <div className="dash-card">
-        <h3 style={{marginBottom:20}}>Notifications</h3>
-        {[{t:'Booking confirmations',d:'Email + SMS when we confirm a slot',on:true},{t:'Arrival updates',d:'"10 min out" text from your detailer',on:true},{t:'Weather alerts',d:'Proactive rescheduling suggestions',on:true},{t:'Marketing',d:'Seasonal specials, no more than monthly',on:false}].map((n,i) => (
-          <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 0', borderBottom: i<3 ? '1px dashed var(--divider-soft)' : ''}}>
-            <div><div style={{fontWeight:600, color:'var(--navy)', fontSize:14}}>{n.t}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:2}}>{n.d}</div></div>
-            <div style={{width:44, height:24, borderRadius:12, background: n.on ? 'var(--red)' : 'var(--divider)', position:'relative', cursor:'pointer', transition:'all 0.3s var(--ease)'}}>
-              <div style={{position:'absolute', top:2, [n.on ? 'right' : 'left']: 2, width:20, height:20, background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,0.15)'}}/>
-            </div>
+const PortalSettings = () => {
+  const [profile, setProfile] = useState({ name: 'Sam Rivera', email: 'sam@example.com', phone: '(626) 555-0112', address: '412 Los Robles Ave, Pasadena CA 91101' });
+  const [saved, setSaved] = useState(false);
+  const [notifs, setNotifs] = useState([true, true, true, false]);
+  const toggleNotif = (idx) => { const n = [...notifs]; n[idx] = !n[idx]; setNotifs(n); };
+  const saveProfile = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const notifItems = [
+    {t:'Booking confirmations',d:'Email + SMS when we confirm a slot'},
+    {t:'Arrival updates',d:'"10 min out" text from your detailer'},
+    {t:'Weather alerts',d:'Proactive rescheduling suggestions'},
+    {t:'Marketing',d:'Seasonal specials, no more than monthly'},
+  ];
+  return (
+    <div className="fade-in">
+      <div className="dash-head"><div><h1>Settings</h1></div></div>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
+        <div className="dash-card">
+          <h3 style={{marginBottom:20}}>Profile</h3>
+          <div className="field"><label>Full name</label><input value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})}/></div>
+          <div className="field"><label>Email</label><input value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})}/></div>
+          <div className="field"><label>Phone</label><input value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})}/></div>
+          <div className="field"><label>Default address</label><input value={profile.address} onChange={e => setProfile({...profile, address: e.target.value})}/></div>
+          <div style={{display:'flex', gap:12, alignItems:'center'}}>
+            <Button variant="primary" onClick={saveProfile}>Save changes</Button>
+            {saved && <span className="fade-in" style={{fontSize:13, color:'var(--success)', fontWeight:600}}>Saved!</span>}
           </div>
-        ))}
+        </div>
+        <div className="dash-card">
+          <h3 style={{marginBottom:20}}>Notifications</h3>
+          {notifItems.map((n,i) => (
+            <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 0', borderBottom: i<3 ? '1px dashed var(--divider-soft)' : ''}}>
+              <div><div style={{fontWeight:600, color:'var(--navy)', fontSize:14}}>{n.t}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:2}}>{n.d}</div></div>
+              <div onClick={() => toggleNotif(i)} style={{width:44, height:24, borderRadius:12, background: notifs[i] ? 'var(--red)' : 'var(--divider)', position:'relative', cursor:'pointer', transition:'all 0.3s var(--ease)'}}>
+                <div style={{position:'absolute', top:2, [notifs[i] ? 'right' : 'left']: 2, width:20, height:20, background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,0.15)', transition:'all 0.3s var(--ease)'}}/>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const PortalPage = () => {
   const [tab, setTab] = useState('overview');

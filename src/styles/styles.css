@@ -512,6 +512,42 @@ p { color: var(--text); }
 .pulse-dot { animation: pulseDot 2s var(--ease) infinite; }
 @keyframes pulseDot { 0%, 100% { box-shadow: 0 0 0 0 rgba(188,49,40,0.5); } 50% { box-shadow: 0 0 0 8px rgba(188,49,40,0); } }
 
+/* Mobile responsive — booking, contact, portal, admin */
+@media (max-width: 768px) {
+  .booking-layout { grid-template-columns: 1fr; }
+  .booking-aside { position: static; }
+  .choice-grid { grid-template-columns: 1fr; }
+  .vehicle-types { grid-template-columns: repeat(2, 1fr); }
+  .schedule-grid { grid-template-columns: 1fr; }
+  .field-row, .field-row-3 { grid-template-columns: 1fr; }
+  .pay-methods { grid-template-columns: 1fr; }
+  .stepper span { display: none; }
+  .stepper .dash { min-width: 20px; }
+  .confirm h2 { font-size: 26px; }
+  .confirm-summary { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  /* Contact page */
+  .page .container > div[style*="gridTemplateColumns"] { display: flex !important; flex-direction: column; gap: 32px !important; }
+  /* Portal / Admin dashboard */
+  .dash-layout { grid-template-columns: 1fr; }
+  .dash-side { position: fixed; left: 0; top: 0; bottom: 0; width: 260px; z-index: 100; transform: translateX(-100%); transition: transform 0.3s var(--ease); }
+  .dash-side.open { transform: translateX(0); }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-row { grid-template-columns: 1fr; }
+  .portal-bookings .pb-item { flex-direction: column; gap: 12px; align-items: flex-start; }
+}
+
+@media (max-width: 480px) {
+  .hero h1 { font-size: 28px; }
+  .hero-ctas { flex-direction: column; }
+  .hero-trust { flex-direction: column; gap: 12px; }
+  .kpi-grid { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1fr; }
+}
+
 /* Density override */
 body[data-density="compact"] .section { padding: var(--sp-8) 0; }
 body[data-density="compact"] .card { padding: var(--sp-5); }
