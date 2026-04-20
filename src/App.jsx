@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './lib/AuthContext';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -19,9 +20,14 @@ const ScrollToTop = () => {
   return null;
 };
 
-const AppRoutes = ({ user, setUser }) => {
+const AppRoutes = ({ demoUser, setDemoUser }) => {
   const { pathname } = useLocation();
+  const { user: authUser, profile } = useAuth();
   const isDashboard = pathname.startsWith('/portal') || pathname.startsWith('/admin');
+
+  // Use real auth when Supabase is configured, otherwise fall back to demo user
+  const user = authUser ? { name: profile?.full_name || authUser.email, role: profile?.role || 'customer', email: authUser.email } : demoUser;
+  const setUser = authUser ? () => {} : setDemoUser;
 
   return (
     <>
@@ -49,11 +55,13 @@ const AppRoutes = ({ user, setUser }) => {
 };
 
 const App = () => {
-  const [user, setUser] = useState(null);
+  const [demoUser, setDemoUser] = useState(null);
   return (
-    <BrowserRouter>
-      <AppRoutes user={user} setUser={setUser} />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <AppRoutes demoUser={demoUser} setDemoUser={setDemoUser} />
+      </BrowserRouter>
+    </AuthProvider>
   );
 };
 
