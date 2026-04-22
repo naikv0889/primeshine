@@ -13,7 +13,7 @@ END $$;
 
 -- Add referrals table (new)
 CREATE TABLE IF NOT EXISTS referrals (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   referrer_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   referred_name text NOT NULL,
   referred_email text,

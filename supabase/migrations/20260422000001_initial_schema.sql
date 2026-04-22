@@ -1,8 +1,8 @@
 -- PrimeShine Detail Co. — Database Schema
 -- Run this in Supabase SQL editor or via CLI migrations
 
--- Enable UUID generation
-create extension if not exists "uuid-ossp";
+-- Booking number sequence (must exist before bookings table references it)
+create sequence if not exists booking_seq start with 2054;
 
 -- Profiles (extends Supabase auth.users)
 create table profiles (
@@ -37,7 +37,7 @@ create trigger on_auth_user_created
 
 -- Vehicles
 create table vehicles (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references profiles(id) on delete cascade,
   make text not null,
   model text not null,
@@ -52,7 +52,7 @@ create table vehicles (
 
 -- Bookings
 create table bookings (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   booking_number text unique not null default ('B-' || lpad(nextval('booking_seq')::text, 4, '0')),
   customer_id uuid not null references profiles(id) on delete cascade,
   vehicle_id uuid references vehicles(id) on delete set null,
@@ -77,12 +77,9 @@ create table bookings (
   updated_at timestamptz not null default now()
 );
 
--- Sequence for booking numbers
-create sequence if not exists booking_seq start with 2054;
-
 -- Reviews
 create table reviews (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references bookings(id) on delete cascade,
   customer_id uuid not null references profiles(id) on delete cascade,
   rating int not null check (rating between 1 and 5),
@@ -95,7 +92,7 @@ create table reviews (
 
 -- Contact messages
 create table contact_messages (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   first_name text not null,
   last_name text,
   email text not null,
