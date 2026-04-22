@@ -336,7 +336,25 @@ const AdminPage = () => {
       getAllReviews(),
     ]);
     if (bRes.data?.length) setBookings(bRes.data);
-    if (cRes.data?.length) setCustomers(cRes.data);
+    if (cRes.data?.length) {
+      // Transform Supabase profile shape to match admin UI expectations
+      const allBookings = bRes.data || [];
+      setCustomers(cRes.data.map(p => {
+        const cBookings = allBookings.filter(b => b.customer_id === p.id);
+        const spent = cBookings.reduce((s, b) => s + (b.total || 0), 0);
+        const visits = cBookings.filter(b => b.status === 'completed').length;
+        const lastBooking = cBookings[0];
+        return {
+          ...p,
+          name: p.full_name,
+          spent,
+          visits,
+          last: lastBooking?.scheduled_date || '',
+          tag: spent >= 500 ? 'VIP' : visits >= 3 ? 'Repeat' : 'Regular',
+          tagClass: spent >= 500 ? 'warn' : 'ok',
+        };
+      }));
+    }
     if (rRes.data?.length) setReviews(rRes.data);
     setLoading(false);
   }, [authUser]);
