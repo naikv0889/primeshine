@@ -12,11 +12,11 @@ import Stars from '../../components/Stars';
 import WxIcon from '../../components/WxIcon';
 import { Sparkline, BarChart, LineChart } from '../../components/Charts';
 
-const AdminDashboard = ({ bookings, customers, reviews, userName }) => (
+const AdminDashboard = ({ bookings, customers, reviews, userName, onExport }) => (
   <div className="fade-in">
     <div className="dash-head">
       <div><div style={{fontSize:13, color:'var(--text-mute)', letterSpacing:'0.05em', textTransform:'uppercase', fontWeight:600}}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div><h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {userName || 'Boss'}</h1></div>
-      <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="download" size="sm">Export</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
+      <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="download" size="sm" onClick={onExport}>Export</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
     </div>
     <div className="kpi-grid">
       {[
@@ -70,10 +70,28 @@ const AdminDashboard = ({ bookings, customers, reviews, userName }) => (
   </div>
 );
 
-const AdminBookings = ({ bookings }) => (
+const downloadCSV = (filename, headers, rows) => {
+  const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [headers.join(','), ...rows.map(r => r.map(escape).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+};
+
+const AdminBookings = ({ bookings }) => {
+  const exportBookings = () => {
+    const headers = ['ID','Customer','Service','Date','Time','Total','Status'];
+    const rows = bookings.map(b => [
+      b.booking_number || b.id, b.profiles?.full_name || b.customer || '', SERVICES.find(s => s.id === b.service_id)?.name || b.service_id || '',
+      b.scheduled_date || '', b.scheduled_time || '', b.total || 0, b.status || ''
+    ]);
+    downloadCSV('primeshine-bookings.csv', headers, rows);
+  };
+  return (
   <div className="fade-in">
     <div className="dash-head"><div><h1>Bookings</h1><p className="muted" style={{marginTop:4}}>{bookings.length} total</p></div>
-      <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="filter" size="sm">Filter</Button><Button variant="ghost" icon="download" size="sm">Export</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
+      <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="filter" size="sm">Filter</Button><Button variant="ghost" icon="download" size="sm" onClick={exportBookings}>Export</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
     </div>
     <div className="dash-card" style={{padding:0, overflow:'hidden'}}>
       <table className="table"><thead><tr><th style={{paddingLeft:24}}>ID</th><th>Customer</th><th>Service</th><th>When</th><th>Tech</th><th>Total</th><th>Status</th><th style={{paddingRight:24}}></th></tr></thead>
@@ -81,7 +99,8 @@ const AdminBookings = ({ bookings }) => (
       </table>
     </div>
   </div>
-);
+  );
+};
 
 const AdminCustomers = ({ customers, setDetailId, setImportOpen }) => {
   const [search, setSearch] = useState('');
@@ -91,10 +110,16 @@ const AdminCustomers = ({ customers, setDetailId, setImportOpen }) => {
     return (c.name || c.full_name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
   });
 
+  const exportCustomers = () => {
+    const headers = ['Name','Email','Phone','Visits','Spent','Tag','Last Visit'];
+    const rows = customers.map(c => [c.name || c.full_name || '', c.email || '', c.phone || '', c.visits || 0, c.spent || 0, c.tag || '', c.last || '']);
+    downloadCSV('primeshine-customers.csv', headers, rows);
+  };
+
   return (
     <div className="fade-in">
       <div className="dash-head"><div><h1>Customers</h1><p className="muted" style={{marginTop:4}}>{customers.length} total</p></div>
-        <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="upload" size="sm" onClick={() => setImportOpen(true)}>Import CSV</Button><Button variant="primary" size="sm" icon="plus">Add customer</Button></div>
+        <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="download" size="sm" onClick={exportCustomers}>Export</Button><Button variant="ghost" icon="upload" size="sm" onClick={() => setImportOpen(true)}>Import CSV</Button><Button variant="primary" size="sm" icon="plus">Add customer</Button></div>
       </div>
       <div style={{display:'flex', gap:12, marginBottom:16}}>
         <div style={{position:'relative', flex:1}}>
@@ -276,22 +301,61 @@ const AdminServices = () => (
   </div>
 );
 
-const AdminReports = () => (
-  <div className="fade-in">
-    <div className="dash-head"><div><h1>Reports</h1><p className="muted" style={{marginTop:4}}>Revenue, retention, and operational performance.</p></div>
-      <div style={{display:'flex', gap:8}}><Button variant="ghost" size="sm">Last 30 days</Button><Button variant="ghost" icon="download" size="sm">Export</Button></div>
+const AdminReports = ({ bookings, customers }) => {
+  const completed = bookings.filter(b => b.status === 'completed');
+  const avgTicket = completed.length ? Math.round(completed.reduce((s,b) => s + (b.total || 0), 0) / completed.length) : 0;
+  const cancelled = bookings.filter(b => b.status === 'cancelled').length;
+  const cancelRate = bookings.length ? ((cancelled / bookings.length) * 100).toFixed(1) : '0';
+  const uniqueCustomers = new Set(bookings.map(b => b.customer_id).filter(Boolean));
+  const repeatCustomers = [...uniqueCustomers].filter(cid => bookings.filter(b => b.customer_id === cid).length > 1);
+  const repeatRate = uniqueCustomers.size ? Math.round((repeatCustomers.length / uniqueCustomers.size) * 100) : 0;
+  // Bookings by day of week
+  const dowCounts = [0,0,0,0,0,0,0];
+  bookings.forEach(b => { if (b.scheduled_date) { const d = new Date(b.scheduled_date + 'T12:00:00'); dowCounts[d.getDay()]++; } });
+  // Reorder to Mon-Sun
+  const dowData = [...dowCounts.slice(1), dowCounts[0]];
+
+  const exportReportCSV = () => {
+    const rows = [['Metric','Value'], ['Total bookings', bookings.length], ['Completed', completed.length], ['Cancelled', cancelled], ['Avg ticket', '$' + avgTicket], ['Cancel rate', cancelRate + '%'], ['Repeat rate', repeatRate + '%'], ['Total customers', customers.length]];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'primeshine-report.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="dash-head"><div><h1>Reports</h1><p className="muted" style={{marginTop:4}}>Revenue, retention, and operational performance.</p></div>
+        <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="download" size="sm" onClick={exportReportCSV}>Export</Button></div>
+      </div>
+      <div className="kpi-grid">
+        {[
+          {l:'Avg ticket',v:'$' + avgTicket, d: completed.length + ' completed'},
+          {l:'Repeat rate',v: repeatRate + '%', d: repeatCustomers.length + ' of ' + uniqueCustomers.size + ' customers'},
+          {l:'Cancel rate',v: cancelRate + '%', d: cancelled + ' cancelled'},
+          {l:'Total revenue',v:'$' + completed.reduce((s,b) => s + (b.total || 0), 0).toLocaleString(), d:'Completed bookings'},
+        ].map((k,i) => (
+          <div key={i} className="kpi"><div className="kpi-lab">{k.l}</div><div className="kpi-val">{k.v}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:6}}>{k.d}</div></div>
+        ))}
+      </div>
+      <div className="dash-row even">
+        <div className="dash-card"><div className="dash-card-head"><h3>Bookings by day of week</h3></div><BarChart data={dowData} labels={['Mon','Tue','Wed','Thu','Fri','Sat','Sun']}/></div>
+        <div className="dash-card"><div className="dash-card-head"><h3>Service breakdown</h3></div>
+          <div style={{display:'flex', flexDirection:'column', gap:12, marginTop:8}}>
+            {SERVICES.map(s => {
+              const count = bookings.filter(b => b.service_id === s.id).length;
+              const pct = bookings.length ? Math.round((count / bookings.length) * 100) : 0;
+              return (
+                <div key={s.id}><div style={{display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4}}><span style={{color:'var(--navy)', fontWeight:500}}>{s.name}</span><span className="mono" style={{color:'var(--text-mute)'}}>{count} · {pct}%</span></div><div style={{height:8, background:'var(--muted)', borderRadius:4, overflow:'hidden'}}><div style={{height:'100%', width:`${pct}%`, background:'var(--red)'}}/></div></div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
-    <div className="kpi-grid">
-      {[{l:'Avg ticket',v:'$184',d:'+$12 vs Q4'},{l:'Repeat rate',v:'62%',d:'+4pts YoY'},{l:'No-show rate',v:'1.8%',d:'–0.6pts'},{l:'Weather cancels',v:'3.4%',d:'Seasonal'}].map((k,i) => (
-        <div key={i} className="kpi"><div className="kpi-lab">{k.l}</div><div className="kpi-val">{k.v}</div><div style={{fontSize:12, color:'var(--text-mute)', marginTop:6}}>{k.d}</div></div>
-      ))}
-    </div>
-    <div className="dash-row even">
-      <div className="dash-card"><div className="dash-card-head"><h3>Bookings by day of week</h3></div><BarChart data={[23,31,34,29,42,47,18]} labels={['Mon','Tue','Wed','Thu','Fri','Sat','Sun']}/></div>
-      <div className="dash-card"><div className="dash-card-head"><h3>New vs returning</h3></div><LineChart data={[42,45,48,52,58,62,68,72,75,82,88,92]} labels={['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar']}/></div>
-    </div>
-  </div>
-);
+  );
+};
 
 const ImportModal = ({ onClose }) => {
   const [step, setStep] = useState(1);
@@ -388,6 +452,12 @@ const AdminPage = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleExportDashboard = () => {
+    const headers = ['ID','Customer','Service','Date','Total','Status'];
+    const rows = bookings.map(b => [b.booking_number || b.id, b.profiles?.full_name || '', SERVICES.find(s => s.id === b.service_id)?.name || '', b.scheduled_date || '', b.total || 0, b.status || '']);
+    downloadCSV('primeshine-dashboard.csv', headers, rows);
+  };
+
   const handleReplyToReview = async (reviewId, reply) => {
     await replyToReview(reviewId, reply);
     setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, reply, replied_at: new Date().toISOString() } : r));
@@ -406,13 +476,13 @@ const AdminPage = () => {
       </aside>
       <main className="dash-main">
         {loading && <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>Loading...</div>}
-        {!loading && tab === 'dashboard' && <AdminDashboard bookings={bookings} customers={customers} reviews={reviews} userName={authUser?.user_metadata?.full_name?.split(' ')[0] || ''}/>}
+        {!loading && tab === 'dashboard' && <AdminDashboard bookings={bookings} customers={customers} reviews={reviews} userName={authUser?.user_metadata?.full_name?.split(' ')[0] || ''} onExport={handleExportDashboard}/>}
         {!loading && tab === 'bookings' && <AdminBookings bookings={bookings}/>}
         {!loading && tab === 'customers' && !detailId && <AdminCustomers customers={customers} setDetailId={setDetailId} setImportOpen={setImportOpen}/>}
         {!loading && tab === 'customers' && detailId && <AdminCustomerDetail id={detailId} customers={customers} bookings={bookings} setDetailId={setDetailId}/>}
         {!loading && tab === 'reviews' && <AdminReviewsTab reviews={reviews} onReply={handleReplyToReview}/>}
         {!loading && tab === 'services' && <AdminServices/>}
-        {!loading && tab === 'reports' && <AdminReports/>}
+        {!loading && tab === 'reports' && <AdminReports bookings={bookings} customers={customers}/>}
         {!loading && tab === 'settings' && <div className="fade-in"><h1>Settings</h1><p className="muted" style={{marginTop:8}}>Workspace configuration.</p></div>}
       </main>
       {importOpen && <ImportModal onClose={() => setImportOpen(false)}/>}

@@ -378,17 +378,29 @@ const PortalReviews = ({ bookings, reviews, onReviewSubmit }) => {
   );
 };
 
+const NOTIF_KEYS = ['confirmations', 'arrival', 'weather', 'marketing'];
+const NOTIF_DEFAULTS = { confirmations: true, arrival: true, weather: true, marketing: false };
+
 const PortalSettings = ({ userName }) => {
   const { user: authUser, profile } = useAuth();
   const [profileForm, setProfileForm] = useState({
-    name: profile?.full_name || userName || 'Sam Rivera',
-    email: profile?.email || 'sam@example.com',
-    phone: profile?.phone || '(626) 555-0112',
-    address: profile?.default_address || '412 Los Robles Ave, Pasadena CA 91101',
+    name: profile?.full_name || userName || '',
+    email: profile?.email || authUser?.email || '',
+    phone: profile?.phone || '',
+    address: profile?.default_address || '',
   });
   const [saved, setSaved] = useState(false);
-  const [notifs, setNotifs] = useState([true, true, true, false]);
-  const toggleNotif = (idx) => { const n = [...notifs]; n[idx] = !n[idx]; setNotifs(n); };
+  const prefs = profile?.notification_prefs || NOTIF_DEFAULTS;
+  const [notifs, setNotifs] = useState(NOTIF_KEYS.map(k => prefs[k] ?? NOTIF_DEFAULTS[k]));
+
+  const toggleNotif = async (idx) => {
+    const n = [...notifs]; n[idx] = !n[idx]; setNotifs(n);
+    if (supabase && authUser) {
+      const updated = {};
+      NOTIF_KEYS.forEach((k, i) => { updated[k] = n[i]; });
+      await supabase.from('profiles').update({ notification_prefs: updated }).eq('id', authUser.id);
+    }
+  };
 
   const saveProfile = async () => {
     if (supabase && authUser) {
