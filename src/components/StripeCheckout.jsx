@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { createPaymentIntent } from '../lib/stripe';
 import Button from './Button';
 import Icon from './Icon';
 
@@ -15,7 +16,7 @@ const cardStyle = {
   },
 };
 
-const StripeCheckout = ({ onSuccess, total }) => {
+const StripeCheckout = ({ onSuccess, total, serviceId, addons, vehicleType }) => {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState(null);
@@ -26,21 +27,37 @@ const StripeCheckout = ({ onSuccess, total }) => {
     setProcessing(true);
     setError(null);
 
-    const card = elements.getElement(CardElement);
-    const { error: pmError, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card,
+    // 1. Create PaymentIntent via Edge Function (server calculates price)
+    const { data: piData, error: piError } = await createPaymentIntent({
+      serviceId,
+      addons,
+      vehicleType,
     });
 
-    if (pmError) {
-      setError(pmError.message);
+    if (piError || !piData?.clientSecret) {
+      // Fallback: if Edge Function unavailable, just collect card info (demo mode)
+      const card = elements.getElement(CardElement);
+      const { error: pmError, paymentMethod } = await stripe.createPaymentMethod({ type: 'card', card });
+      if (pmError) { setError(pmError.message); setProcessing(false); return; }
+      onSuccess(paymentMethod.id);
       setProcessing(false);
       return;
     }
 
-    // In production: send paymentMethod.id to your backend to create a PaymentIntent
-    // For now, simulate success
-    onSuccess(paymentMethod.id);
+    // 2. Confirm payment with the client secret from server
+    const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+      piData.clientSecret,
+      { payment_method: { card: elements.getElement(CardElement) } }
+    );
+
+    if (confirmError) {
+      setError(confirmError.message);
+      setProcessing(false);
+      return;
+    }
+
+    // 3. Payment confirmed — pass the PaymentIntent ID back
+    onSuccess(paymentIntent.id);
     setProcessing(false);
   };
 

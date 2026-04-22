@@ -260,7 +260,7 @@ const BookStep4 = ({ state, setState, next, prev, total }) => {
       {method === 'card' && (
         stripePromise ? (
           <Elements stripe={stripePromise}>
-            <StripeCheckout total={total} onSuccess={(pmId) => { setState({ ...state, paymentMethodId: pmId }); next(); }} />
+            <StripeCheckout total={total} serviceId={state.service} addons={state.addons} vehicleType={state.vehicleType} onSuccess={(pmId) => { setState({ ...state, paymentMethodId: pmId }); next(); }} />
           </Elements>
         ) : (
           <DemoCardForm />
@@ -348,6 +348,8 @@ const BookingFlow = () => {
         total,
         notes: state.notes,
         payment_method: state.paymentMethodId ? 'card' : 'demo',
+        stripe_payment_id: state.paymentMethodId || null,
+        payment_status: state.paymentMethodId ? 'authorized' : 'pending',
       };
       const { data } = await createBooking(bookingData);
       if (data?.booking_number) setBookingId(data.booking_number);
