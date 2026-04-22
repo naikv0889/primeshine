@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/AuthContext';
 import { getAllBookings, getAllReviews, getCustomers, updateBooking } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import { generateFollowUp } from '../../lib/ai';
 import { SERVICES, ADDONS } from '../../data/services';
 import { WEATHER_FORECAST, ADMIN_BOOKINGS, ADMIN_CUSTOMERS, ADMIN_REVIEWS, PORTAL_VEHICLES } from '../../data/reviews';
 import Icon from '../../components/Icon';
@@ -11,10 +12,10 @@ import Stars from '../../components/Stars';
 import WxIcon from '../../components/WxIcon';
 import { Sparkline, BarChart, LineChart } from '../../components/Charts';
 
-const AdminDashboard = ({ bookings, customers, reviews }) => (
+const AdminDashboard = ({ bookings, customers, reviews, userName }) => (
   <div className="fade-in">
     <div className="dash-head">
-      <div><div style={{fontSize:13, color:'var(--text-mute)', letterSpacing:'0.05em', textTransform:'uppercase', fontWeight:600}}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div><h1>Good morning, Jason</h1></div>
+      <div><div style={{fontSize:13, color:'var(--text-mute)', letterSpacing:'0.05em', textTransform:'uppercase', fontWeight:600}}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div><h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {userName || 'Boss'}</h1></div>
       <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="download" size="sm">Export</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
     </div>
     <div className="kpi-grid">
@@ -118,8 +119,22 @@ const AdminCustomers = ({ customers, setDetailId, setImportOpen }) => {
   );
 };
 
-const AdminCustomerDetail = ({ id, customers, setDetailId }) => {
+const AdminCustomerDetail = ({ id, customers, bookings, setDetailId }) => {
   const c = customers.find(x => x.id === id) || customers[0];
+  const [followUp, setFollowUp] = useState(null);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpError, setFollowUpError] = useState(null);
+  const customerBookings = bookings.filter(b => (b.customer_id || b.customerId) === id);
+
+  const handleFollowUp = async () => {
+    setFollowUpLoading(true);
+    setFollowUpError(null);
+    const { data, error } = await generateFollowUp(id);
+    setFollowUpLoading(false);
+    if (error) { setFollowUpError(error.message); return; }
+    setFollowUp(data);
+  };
+
   if (!c) return null;
   return (
     <div className="fade-in">
@@ -132,22 +147,37 @@ const AdminCustomerDetail = ({ id, customers, setDetailId }) => {
         <div style={{display:'flex', gap:8}}><Button variant="ghost" size="sm" icon="mail">Email</Button><Button variant="ghost" size="sm" icon="message">Text</Button><Button variant="primary" size="sm" icon="plus">New booking</Button></div>
       </div>
       <div className="kpi-grid">
-        <div className="kpi"><div className="kpi-lab">Lifetime spend</div><div className="kpi-val">${c.spent}</div></div>
-        <div className="kpi"><div className="kpi-lab">Total visits</div><div className="kpi-val">{c.visits}</div></div>
-        <div className="kpi"><div className="kpi-lab">Last visit</div><div className="kpi-val" style={{fontSize:22}}>{c.last || 'N/A'}</div></div>
+        <div className="kpi"><div className="kpi-lab">Lifetime spend</div><div className="kpi-val">${c.spent || 0}</div></div>
+        <div className="kpi"><div className="kpi-lab">Total visits</div><div className="kpi-val">{c.visits || customerBookings.length}</div></div>
+        <div className="kpi"><div className="kpi-lab">Last visit</div><div className="kpi-val" style={{fontSize:22}}>{c.last || customerBookings[0]?.scheduled_date || 'N/A'}</div></div>
         <div className="kpi"><div className="kpi-lab">Avg rating left</div><div className="kpi-val">4.8</div></div>
       </div>
       <div className="dash-row">
         <div className="dash-card"><div className="dash-card-head"><h3>Booking history</h3></div>
-          <table className="table"><thead><tr><th>Date</th><th>Service</th><th>Tech</th><th>Total</th><th>Status</th></tr></thead>
-            <tbody>{[{d:'Mar 14',s:'Signature Detail',t:'Jason M.',a:184,st:'Confirmed',sc:'ok'},{d:'Feb 22',s:'Express Shine',t:'Wes L.',a:59,st:'Completed',sc:'info'},{d:'Jan 30',s:'Signature Detail',t:'Jason M.',a:169,st:'Completed',sc:'info'}].map((r,i) => (
-              <tr key={i}><td>{r.d}</td><td>{r.s}</td><td>{r.t}</td><td className="mono">${r.a}</td><td><span className={`badge ${r.sc}`}><span className="dot"/>{r.st}</span></td></tr>
-            ))}</tbody>
-          </table>
+          {customerBookings.length > 0 ? (
+            <table className="table"><thead><tr><th>Date</th><th>Service</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>{customerBookings.map((b,i) => (
+                <tr key={i}><td>{b.scheduled_date || b.d}</td><td>{SERVICES.find(s => s.id === b.service_id)?.name || b.svc || b.service_id}</td><td className="mono">${b.total || 0}</td><td><span className={`badge ${b.status === 'completed' ? 'info' : 'ok'}`}><span className="dot"/>{b.status}</span></td></tr>
+              ))}</tbody>
+            </table>
+          ) : (
+            <p style={{color:'var(--text-mute)', fontSize:14}}>No bookings yet.</p>
+          )}
         </div>
         <div>
-          <div className="dash-card"><h3 style={{marginBottom:16}}>Vehicles</h3>
-            {PORTAL_VEHICLES.map(v => (<div key={v.id} style={{padding:'12px 0', borderBottom:'1px dashed var(--divider-soft)'}}><div style={{fontWeight:600, color:'var(--navy)'}}>{v.year} {v.make} {v.model}</div><div style={{fontSize:12, color:'var(--text-mute)'}}>{v.color} · {v.plate}</div></div>))}
+          <div className="dash-card">
+            <div className="dash-card-head"><h3>AI follow-up</h3></div>
+            <p style={{fontSize:13, color:'var(--text-mute)', marginBottom:16}}>Generate a personalized re-engagement text using AI, based on this customer's history.</p>
+            {followUpError && <div style={{padding:12, background:'var(--red-bg)', borderRadius:'var(--r-sm)', fontSize:13, color:'var(--red)', marginBottom:12}}>{followUpError}</div>}
+            {followUp && (
+              <div className="fade-in" style={{padding:16, background:'var(--muted)', borderRadius:'var(--r-md)', marginBottom:16, fontSize:14, lineHeight:1.6, color:'var(--text)'}}>
+                <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:600, color:'var(--text-mute)', marginBottom:8}}>Generated message {followUp.model !== 'demo' ? '(AI)' : '(Demo)'}</div>
+                "{followUp.text}"
+              </div>
+            )}
+            <Button variant="primary" size="sm" icon="message" onClick={handleFollowUp} disabled={followUpLoading}>
+              {followUpLoading ? 'Generating...' : followUp ? 'Regenerate' : 'Generate follow-up'}
+            </Button>
           </div>
           <div className="dash-card" style={{marginTop:16}}><h3 style={{marginBottom:12}}>Notes</h3>
             <div style={{padding:12, background:'var(--muted)', borderRadius:'var(--r-sm)', fontSize:13, lineHeight:1.5, color:'var(--text)'}}>Prefers morning slots. Sensitive to citrus scents; use unscented protectant only.</div>
@@ -326,10 +356,10 @@ const AdminPage = () => {
       </aside>
       <main className="dash-main">
         {loading && <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>Loading...</div>}
-        {!loading && tab === 'dashboard' && <AdminDashboard bookings={bookings} customers={customers} reviews={reviews}/>}
+        {!loading && tab === 'dashboard' && <AdminDashboard bookings={bookings} customers={customers} reviews={reviews} userName={authUser?.user_metadata?.full_name?.split(' ')[0] || ''}/>}
         {!loading && tab === 'bookings' && <AdminBookings bookings={bookings}/>}
         {!loading && tab === 'customers' && !detailId && <AdminCustomers customers={customers} setDetailId={setDetailId} setImportOpen={setImportOpen}/>}
-        {!loading && tab === 'customers' && detailId && <AdminCustomerDetail id={detailId} customers={customers} setDetailId={setDetailId}/>}
+        {!loading && tab === 'customers' && detailId && <AdminCustomerDetail id={detailId} customers={customers} bookings={bookings} setDetailId={setDetailId}/>}
         {!loading && tab === 'reviews' && <AdminReviewsTab reviews={reviews}/>}
         {!loading && tab === 'services' && <AdminServices/>}
         {!loading && tab === 'reports' && <AdminReports/>}
