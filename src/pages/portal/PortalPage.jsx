@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/AuthContext';
-import { getBookings, getVehicles, getReviews, updateBooking, createVehicle, deleteVehicle } from '../../lib/api';
+import { getBookings, getVehicles, getReviews, updateBooking, createVehicle, deleteVehicle, createReview } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { PORTAL_BOOKINGS, PORTAL_VEHICLES, WEATHER_FORECAST } from '../../data/reviews';
 import { SERVICES } from '../../data/services';
@@ -32,7 +32,85 @@ const fmtBooking = (b) => {
   };
 };
 
-const PortalOverview = ({ navigate, setTab, bookings, userName }) => {
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const formatDate = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+};
+
+const TIME_SLOTS = ['8:00 AM','9:30 AM','11:00 AM','12:30 PM','2:00 PM','3:30 PM'];
+
+const RescheduleModal = ({ booking, onClose, onSave }) => {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [date, setDate] = useState(null);
+  const [time, setTime] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startDow = new Date(viewYear, viewMonth, 1).getDay();
+  const calDays = [];
+  for (let i = 0; i < startDow; i++) calDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(viewYear, viewMonth, d); dt.setHours(0,0,0,0);
+    calDays.push({ d, iso: `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`, isPast: dt < today, isToday: dt.getTime() === today.getTime() });
+  }
+  const canGoPrev = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
+  const prevMonth = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); };
+  const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); };
+
+  const handleSave = async () => {
+    if (!date || !time) return;
+    setSaving(true);
+    await onSave(booking, date, time);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}} onClick={onClose}>
+      <div className="dash-card fade-in" style={{width:420, maxHeight:'90vh', overflow:'auto', padding:28}} onClick={e => e.stopPropagation()}>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+          <h3>Reschedule booking</h3>
+          <button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer', padding:4}}><Icon name="x" size={18}/></button>
+        </div>
+        <div style={{fontSize:13, color:'var(--text-mute)', marginBottom:16}}>Currently: {booking.date}, {booking.time}</div>
+        <div className="cal-head" style={{marginBottom:8}}>
+          <h4 style={{fontSize:14}}>{MONTH_NAMES[viewMonth]} {viewYear}</h4>
+          <div className="cal-nav"><button onClick={prevMonth} disabled={!canGoPrev}><Icon name="chevL" size={14}/></button><button onClick={nextMonth}><Icon name="chevR" size={14}/></button></div>
+        </div>
+        <div className="cal-grid" style={{fontSize:12}}>
+          {['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="cal-dow">{d}</div>)}
+          {calDays.map((c, i) => {
+            if (!c) return <div key={i} className="cal-day muted"/>;
+            const cls = [c.isPast ? 'disabled' : '', c.isToday ? 'today' : '', date === c.iso ? 'selected' : ''].filter(Boolean).join(' ');
+            return <div key={i} className={`cal-day ${cls}`} onClick={() => !c.isPast && setDate(c.iso)}>{c.d}</div>;
+          })}
+        </div>
+        {date && (
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:13, fontWeight:600, marginBottom:8}}>Pick a time for {formatDate(date)}</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:6}}>
+              {TIME_SLOTS.map(t => (
+                <div key={t} onClick={() => setTime(t)} style={{padding:'8px 0', textAlign:'center', fontSize:13, borderRadius:6, cursor:'pointer', border: time === t ? '2px solid var(--red)' : '1px solid var(--divider-soft)', background: time === t ? 'var(--red-bg)' : '#fff', fontWeight: time === t ? 600 : 400}}>{t}</div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{display:'flex', gap:8, marginTop:20, justifyContent:'flex-end'}}>
+          <Button variant="tertiary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!date || !time || saving} onClick={handleSave}>{saving ? 'Saving...' : 'Confirm new time'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PortalOverview = ({ navigate, setTab, bookings, userName, onReschedule }) => {
   const next = bookings.find(b => b.status === 'Confirmed');
   return (
     <div className="fade-in">
@@ -55,7 +133,7 @@ const PortalOverview = ({ navigate, setTab, bookings, userName }) => {
             </div>
             <div style={{textAlign:'right'}}>
               <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:20}}>
-                <Button variant="on-dark" size="sm">Reschedule</Button>
+                <Button variant="on-dark" size="sm" onClick={() => onReschedule(next)}>Reschedule</Button>
                 <Button variant="ghost" size="sm" onClick={() => setTab('bookings')}>Details</Button>
               </div>
             </div>
@@ -98,7 +176,7 @@ const PortalOverview = ({ navigate, setTab, bookings, userName }) => {
   );
 };
 
-const PortalBookings = ({ navigate, bookings, onCancel }) => (
+const PortalBookings = ({ navigate, bookings, onCancel, onReschedule }) => (
   <div className="fade-in">
     <div className="dash-head"><div><h1>My bookings</h1><p className="muted" style={{marginTop:4}}>Upcoming and past detail jobs.</p></div><Button variant="primary" icon="plus" onClick={() => navigate('/book/1')}>New booking</Button></div>
     <div className="portal-bookings">
@@ -113,7 +191,7 @@ const PortalBookings = ({ navigate, bookings, onCancel }) => (
           <div style={{display:'flex', gap:8}}>
             {b.status === 'Confirmed' ? (
               <>
-                <Button variant="secondary" size="sm">Reschedule</Button>
+                <Button variant="secondary" size="sm" onClick={() => onReschedule(b)}>Reschedule</Button>
                 <Button variant="danger" size="sm" onClick={() => onCancel(b)}>Cancel</Button>
               </>
             ) : (
@@ -218,25 +296,87 @@ const PortalPayments = () => (
   </div>
 );
 
-const PortalReviews = () => (
-  <div className="fade-in">
-    <div className="dash-head"><div><h1>My reviews</h1><p className="muted" style={{marginTop:4}}>Share the wins, help us improve the misses.</p></div></div>
-    <div style={{display:'grid', gap:16}}>
-      <div className="dash-card" style={{background:'var(--red-bg)', borderColor:'rgba(188,49,40,0.2)'}}>
-        <div style={{display:'flex', gap:16, alignItems:'flex-start'}}><Icon name="star" size={24} color="var(--red)"/>
-          <div style={{flex:1}}><h3 style={{marginBottom:4}}>1 review waiting</h3><p style={{color:'var(--text)', marginBottom:12}}>Your Jan 30 Signature Detail hasn't been reviewed yet. Takes 30 seconds.</p><Button variant="primary" size="sm">Leave review</Button></div>
-        </div>
-      </div>
-      <div className="dash-card">
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12}}>
-          <div><Stars n={5} size={18}/><h3 style={{marginTop:8}}>Express Shine · Feb 22, 2025</h3></div>
-          <Button variant="tertiary" size="sm" icon="edit">Edit</Button>
-        </div>
-        <p style={{color:'var(--text)', lineHeight:1.6}}>"Fast, careful, and the tire shine on my Civic still looks perfect two weeks later. Jason even wiped down a scuff on the driver door without charging extra."</p>
+const PortalReviews = ({ bookings, reviews, onReviewSubmit }) => {
+  const [writing, setWriting] = useState(null); // booking id
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const reviewedBookingIds = new Set(reviews.map(r => r.booking_id));
+  const unreviewed = bookings.filter(b => b.status === 'Completed' && b._raw && !reviewedBookingIds.has(b._raw.id));
+
+  const handleSubmit = async () => {
+    if (!writing || !comment.trim()) return;
+    setSubmitting(true);
+    await onReviewSubmit({ booking_id: writing, rating, comment: comment.trim() });
+    setWriting(null);
+    setComment('');
+    setRating(5);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="dash-head"><div><h1>My reviews</h1><p className="muted" style={{marginTop:4}}>Share the wins, help us improve the misses.</p></div></div>
+      <div style={{display:'grid', gap:16}}>
+        {unreviewed.length > 0 && !writing && (
+          <div className="dash-card" style={{background:'var(--red-bg)', borderColor:'rgba(188,49,40,0.2)'}}>
+            <div style={{display:'flex', gap:16, alignItems:'flex-start'}}><Icon name="star" size={24} color="var(--red)"/>
+              <div style={{flex:1}}>
+                <h3 style={{marginBottom:4}}>{unreviewed.length} review{unreviewed.length > 1 ? 's' : ''} waiting</h3>
+                <p style={{color:'var(--text)', marginBottom:12}}>Your recent details haven't been reviewed yet. Takes 30 seconds.</p>
+                <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                  {unreviewed.map(b => (
+                    <Button key={b.id} variant="primary" size="sm" onClick={() => setWriting(b._raw.id)}>{b.svc} · {b.date}</Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {writing && (
+          <div className="dash-card fade-in">
+            <h3 style={{marginBottom:16}}>Leave a review</h3>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:13, fontWeight:600, marginBottom:8}}>Rating</div>
+              <div style={{display:'flex', gap:4}}>
+                {[1,2,3,4,5].map(n => (
+                  <span key={n} onClick={() => setRating(n)} style={{cursor:'pointer', fontSize:24, color: n <= rating ? 'var(--red)' : 'var(--divider)'}}>★</span>
+                ))}
+              </div>
+            </div>
+            <div className="field"><label>Your review</label><textarea rows="4" placeholder="How was your detail? What stood out?" value={comment} onChange={e => setComment(e.target.value)}/></div>
+            <div style={{display:'flex', gap:8}}>
+              <Button variant="primary" onClick={handleSubmit} disabled={!comment.trim() || submitting}>{submitting ? 'Submitting...' : 'Submit review'}</Button>
+              <Button variant="tertiary" onClick={() => { setWriting(null); setComment(''); }}>Cancel</Button>
+            </div>
+          </div>
+        )}
+        {reviews.map(r => {
+          const svc = r.bookings ? SERVICES.find(s => s.id === r.bookings.service_id) : null;
+          const d = r.bookings?.scheduled_date ? new Date(r.bookings.scheduled_date + 'T12:00:00') : null;
+          const dateStr = d ? `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}` : '';
+          return (
+            <div key={r.id} className="dash-card">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12}}>
+                <div><Stars n={r.rating} size={18}/><h3 style={{marginTop:8}}>{svc?.name || 'Detail'} · {dateStr}</h3></div>
+              </div>
+              <p style={{color:'var(--text)', lineHeight:1.6}}>"{r.comment}"</p>
+              {r.reply && (
+                <div style={{marginTop:12, padding:'12px 16px', background:'var(--muted)', borderRadius:'var(--r-md)', fontSize:13}}>
+                  <strong>PrimeShine replied:</strong> {r.reply}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {reviews.length === 0 && !writing && unreviewed.length === 0 && (
+          <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>No reviews yet. Complete a booking to leave your first review.</div>
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const PortalSettings = ({ userName }) => {
   const { user: authUser, profile } = useAuth();
@@ -308,19 +448,23 @@ const PortalPage = () => {
   // Data state — starts with mock data, replaced by live data if Supabase is configured
   const [bookings, setBookings] = useState(PORTAL_BOOKINGS);
   const [vehicles, setVehicles] = useState(PORTAL_VEHICLES);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
 
   const userName = profile?.full_name || 'Sam Rivera';
 
   const loadData = useCallback(async () => {
     if (!supabase || !authUser) return;
     setLoading(true);
-    const [bRes, vRes] = await Promise.all([
+    const [bRes, vRes, rRes] = await Promise.all([
       getBookings(authUser.id),
       getVehicles(authUser.id),
+      getReviews(authUser.id),
     ]);
     if (bRes.data) setBookings(bRes.data.map(fmtBooking));
     if (vRes.data) setVehicles(vRes.data);
+    if (rRes.data) setReviews(rRes.data);
     setLoading(false);
   }, [authUser]);
 
@@ -331,6 +475,22 @@ const PortalPage = () => {
       await updateBooking(booking._raw.id, { status: 'cancelled' });
     }
     setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, status: 'Cancelled', statusClass: 'red' } : b));
+  };
+
+  const handleReschedule = async (booking, newDate, newTime) => {
+    if (booking._raw) {
+      await updateBooking(booking._raw.id, { scheduled_date: newDate, scheduled_time: newTime });
+    }
+    const d = new Date(newDate + 'T12:00:00');
+    setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, date: `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}`, day: d.getDate(), month: SHORT_MONTHS[d.getMonth()], time: newTime } : b));
+  };
+
+  const handleReviewSubmit = async (review) => {
+    if (supabase && authUser) {
+      const { data } = await createReview({ ...review, customer_id: authUser.id });
+      if (data) { setReviews(prev => [data, ...prev]); return; }
+    }
+    setReviews(prev => [{ ...review, id: 'demo-' + Date.now(), created_at: new Date().toISOString() }, ...prev]);
   };
 
   const handleAddVehicle = async (v) => {
@@ -363,13 +523,14 @@ const PortalPage = () => {
       </aside>
       <main className="dash-main">
         {loading && <div style={{textAlign:'center', padding:40, color:'var(--text-mute)'}}>Loading...</div>}
-        {!loading && tab === 'overview' && <PortalOverview navigate={navigate} setTab={setTab} bookings={bookings} userName={userName}/>}
-        {!loading && tab === 'bookings' && <PortalBookings navigate={navigate} bookings={bookings} onCancel={handleCancel}/>}
+        {!loading && tab === 'overview' && <PortalOverview navigate={navigate} setTab={setTab} bookings={bookings} userName={userName} onReschedule={setRescheduleTarget}/>}
+        {!loading && tab === 'bookings' && <PortalBookings navigate={navigate} bookings={bookings} onCancel={handleCancel} onReschedule={setRescheduleTarget}/>}
         {!loading && tab === 'vehicles' && <PortalVehicles vehicles={vehicles} onAdd={handleAddVehicle} onDelete={handleDeleteVehicle}/>}
         {!loading && tab === 'payments' && <PortalPayments/>}
-        {!loading && tab === 'reviews' && <PortalReviews/>}
+        {!loading && tab === 'reviews' && <PortalReviews bookings={bookings} reviews={reviews} onReviewSubmit={handleReviewSubmit}/>}
         {!loading && tab === 'settings' && <PortalSettings userName={userName}/>}
       </main>
+      {rescheduleTarget && <RescheduleModal booking={rescheduleTarget} onClose={() => setRescheduleTarget(null)} onSave={handleReschedule}/>}
     </div>
   );
 };
