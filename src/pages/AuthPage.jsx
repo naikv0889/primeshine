@@ -35,9 +35,14 @@ const AuthPage = () => {
   const handlePasswordSignIn = async () => {
     setLoading(true);
     setError(null);
-    const { error: err } = await signIn(email, password);
+    const { error: err, data } = await signIn(email, password);
     setLoading(false);
     if (err) { setError(err.message); return; }
+    // Check profile role to route admin vs customer
+    if (supabase && data?.user) {
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+      if (profile?.role === 'admin') { navigate('/admin'); return; }
+    }
     navigate('/portal');
   };
 

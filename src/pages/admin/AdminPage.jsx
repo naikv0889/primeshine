@@ -335,8 +335,8 @@ const AdminPage = () => {
       getCustomers(),
       getAllReviews(),
     ]);
-    if (bRes.data?.length) setBookings(bRes.data);
-    if (cRes.data?.length) {
+    if (bRes.data) setBookings(bRes.data);
+    if (cRes.data) {
       // Transform Supabase profile shape to match admin UI expectations
       const allBookings = bRes.data || [];
       setCustomers(cRes.data.map(p => {
@@ -355,7 +355,7 @@ const AdminPage = () => {
         };
       }));
     }
-    if (rRes.data?.length) setReviews(rRes.data);
+    if (rRes.data) setReviews(rRes.data);
     setLoading(false);
   }, [authUser]);
 

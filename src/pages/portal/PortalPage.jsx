@@ -319,8 +319,8 @@ const PortalPage = () => {
       getBookings(authUser.id),
       getVehicles(authUser.id),
     ]);
-    if (bRes.data?.length) setBookings(bRes.data.map(fmtBooking));
-    if (vRes.data?.length) setVehicles(vRes.data);
+    if (bRes.data) setBookings(bRes.data.map(fmtBooking));
+    if (vRes.data) setVehicles(vRes.data);
     setLoading(false);
   }, [authUser]);
 
