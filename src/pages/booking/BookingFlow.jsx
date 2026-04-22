@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Elements } from '@stripe/react-stripe-js';
 import { SERVICES, ADDONS, VEHICLE_TYPES } from '../../data/services';
 import { VEHICLE_ICONS } from '../../data/vehicles';
-import { WEATHER_FORECAST } from '../../data/reviews';
 import { getStripe } from '../../lib/stripe';
 import { createBooking } from '../../lib/api';
 import { useAuth } from '../../lib/AuthContext';
@@ -30,6 +29,14 @@ const Stepper = ({ step }) => {
   );
 };
 
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const formatDisplayDate = (isoDate) => {
+  if (!isoDate) return null;
+  const d = new Date(isoDate + 'T12:00:00');
+  return `${MONTH_NAMES[d.getMonth()].slice(0,3)} ${d.getDate()}, ${d.getFullYear()}`;
+};
+
 const BookingSummary = ({ state }) => {
   const svc = SERVICES.find(s => s.id === state.service);
   const vt = VEHICLE_TYPES.find(v => v.id === state.vehicleType);
@@ -44,7 +51,7 @@ const BookingSummary = ({ state }) => {
         <div className="summary-header"><div className="sum-lab">Your order</div><h4>{svc?.name || 'Choose a service'}</h4></div>
         <div className="summary-body">
           <div className={`sum-line ${!vt ? 'empty' : ''}`}><span className="l">Vehicle</span><span className="v">{vt?.name || 'Not selected'}</span></div>
-          <div className={`sum-line ${!state.date ? 'empty' : ''}`}><span className="l">When</span><span className="v">{state.date ? `${state.date}, ${state.time}` : 'Not selected'}</span></div>
+          <div className={`sum-line ${!state.date ? 'empty' : ''}`}><span className="l">When</span><span className="v">{state.date ? `${formatDisplayDate(state.date)}, ${state.time}` : 'Not selected'}</span></div>
           <div className="sum-line"><span className="l">Base</span><span className="v mono">${base}</span></div>
           {state.addons.map(id => { const a = ADDONS.find(x => x.id === id); return (<div key={id} className="sum-line"><span className="l" style={{textTransform:'none', letterSpacing:0, fontSize:13, fontWeight:500}}>+ {a.name}</span><span className="v mono">${a.price}</span></div>); })}
           <div className="sum-line"><span className="l">Tax (9.75%)</span><span className="v mono">${tax}</span></div>
@@ -124,43 +131,75 @@ const BookStep2 = ({ state, setState, next, prev }) => (
 );
 
 const BookStep3 = ({ state, setState, next, prev }) => {
-  const days = [];
-  for (let i = 0; i < 6; i++) days.push({ d: null });
-  for (let i = 1; i <= 31; i++) {
-    let wx = null;
-    if ([15, 16].includes(i)) wx = 'rain';
-    else if ([11, 18].includes(i)) wx = 'cloud';
-    else wx = 'sun';
-    days.push({ d: i, disabled: i < 12, today: i === 12, wx });
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startDow = new Date(viewYear, viewMonth, 1).getDay();
+
+  const calDays = [];
+  for (let i = 0; i < startDow; i++) calDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(viewYear, viewMonth, d);
+    dt.setHours(0,0,0,0);
+    const iso = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isPast = dt < today;
+    const isToday = dt.getTime() === today.getTime();
+    // Simple weather heuristic based on day-of-month for visual variety
+    const wx = isPast ? null : (d % 7 === 0 || d % 7 === 6) ? 'cloud' : (d % 11 === 0) ? 'rain' : 'sun';
+    calDays.push({ d, iso, isPast, isToday, wx });
   }
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
+  };
+  // Don't allow navigating before current month
+  const canGoPrev = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
+
   const slots = [
-    { t: '8:00 AM', status: 'open', tag: 'Best' },{ t: '9:30 AM', status: 'booked' },
-    { t: '11:00 AM', status: 'open', tag: 'Best' },{ t: '12:30 PM', status: 'open' },
-    { t: '2:00 PM', status: 'open' },{ t: '3:30 PM', status: 'open', tag: 'Last' },
-    { t: '5:00 PM', status: 'booked' },
+    { t: '8:00 AM', tag: 'Best' },{ t: '9:30 AM' },
+    { t: '11:00 AM', tag: 'Best' },{ t: '12:30 PM' },
+    { t: '2:00 PM' },{ t: '3:30 PM', tag: 'Last' },
   ];
-  const selectedDayMeta = WEATHER_FORECAST.find(d => d.date.includes(`Mar ${state.day}`));
-  const wxAdvisory = state.day
-    ? (state.day === 15 || state.day === 16)
-      ? { cls: 'warn', text: `80% chance of rain on Mar ${state.day}. We recommend Mar 13\u201314 instead. We'll refund if weather cancels after booking.` }
-      : { cls: 'good', text: `Forecast is ideal: ${selectedDayMeta?.hi || 72}\u00b0 and sunny. This is a perfect-shine day.` }
+
+  const selectedWx = calDays.find(c => c && c.iso === state.date)?.wx;
+  const wxAdvisory = state.date
+    ? selectedWx === 'rain'
+      ? { cls: 'warn', text: `Rain is likely on ${formatDisplayDate(state.date)}. Consider picking a sunny day for best results. We\u2019ll refund if weather cancels after booking.` }
+      : selectedWx === 'cloud'
+        ? { cls: 'warn', text: `Overcast expected on ${formatDisplayDate(state.date)}. Detailing is fine, but sun gives the best shine.` }
+        : { cls: 'good', text: `Forecast looks ideal for ${formatDisplayDate(state.date)}. This is a perfect-shine day.` }
     : null;
+
   return (
     <div className="fade-in">
       <h2 className="booking-title">Pick a date & time</h2>
       <p className="booking-subtitle">Weather-aware calendar: green days hold a shine, gray days don't.</p>
       <div className="schedule-grid">
         <div>
-          <div className="cal-head"><h4>March 2025</h4><div className="cal-nav"><button><Icon name="chevL" size={16}/></button><button><Icon name="chevR" size={16}/></button></div></div>
+          <div className="cal-head">
+            <h4>{MONTH_NAMES[viewMonth]} {viewYear}</h4>
+            <div className="cal-nav">
+              <button onClick={prevMonth} disabled={!canGoPrev}><Icon name="chevL" size={16}/></button>
+              <button onClick={nextMonth}><Icon name="chevR" size={16}/></button>
+            </div>
+          </div>
           <div className="cal-grid">
             {['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="cal-dow">{d}</div>)}
-            {days.map((d, i) => {
-              if (!d.d) return <div key={i} className="cal-day muted"/>;
-              const cls = [d.disabled ? 'disabled' : '', d.today ? 'today' : '', state.day === d.d ? 'selected' : ''].filter(Boolean).join(' ');
+            {calDays.map((c, i) => {
+              if (!c) return <div key={i} className="cal-day muted"/>;
+              const cls = [c.isPast ? 'disabled' : '', c.isToday ? 'today' : '', state.date === c.iso ? 'selected' : ''].filter(Boolean).join(' ');
               return (
-                <div key={i} className={`cal-day ${cls}`} onClick={() => !d.disabled && setState({ ...state, day: d.d, date: `Mar ${d.d}` })}>
-                  {d.d}
-                  {d.wx && !d.disabled && <div className={`wxdot ${d.wx === 'sun' ? 'sun' : d.wx === 'cloud' ? 'cloud' : 'rain'}`}/>}
+                <div key={i} className={`cal-day ${cls}`} onClick={() => !c.isPast && setState({ ...state, day: c.d, date: c.iso })}>
+                  {c.d}
+                  {c.wx && !c.isPast && <div className={`wxdot ${c.wx}`}/>}
                 </div>
               );
             })}
@@ -172,13 +211,13 @@ const BookStep3 = ({ state, setState, next, prev }) => {
           </div>
         </div>
         <div>
-          <h4 style={{fontSize:16, marginBottom:12}}>{state.day ? `Times for Mar ${state.day}` : 'Pick a date to see times'}</h4>
-          {state.day ? (
+          <h4 style={{fontSize:16, marginBottom:12}}>{state.date ? `Times for ${formatDisplayDate(state.date)}` : 'Pick a date to see times'}</h4>
+          {state.date ? (
             <>
               <div className="slots">
                 {slots.map(s => (
-                  <div key={s.t} className={`slot ${s.status === 'booked' ? 'booked' : ''} ${state.time === s.t ? 'selected' : ''}`}
-                       onClick={() => s.status !== 'booked' && setState({ ...state, time: s.t })}>
+                  <div key={s.t} className={`slot ${state.time === s.t ? 'selected' : ''}`}
+                       onClick={() => setState({ ...state, time: s.t })}>
                     <span>{s.t}</span>
                     {s.tag && <span className={`slot-tag ${s.tag === 'Last' ? 'warn' : ''}`}>{s.tag}</span>}
                   </div>
@@ -209,7 +248,7 @@ const BookStep3 = ({ state, setState, next, prev }) => {
       </div>
       <div className="booking-nav">
         <Button variant="tertiary" onClick={prev} icon="arrowLeft">Back</Button>
-        <Button variant="primary" onClick={next} disabled={!state.day || !state.time} iconRight="arrow">Continue to payment</Button>
+        <Button variant="primary" onClick={next} disabled={!state.date || !state.time} iconRight="arrow">Continue to payment</Button>
       </div>
     </div>
   );
@@ -313,7 +352,7 @@ const BookConfirm = ({ state, navigate, bookingId }) => {
         <p>A confirmation text is on its way, and the details are in your portal. We'll arrive in the first 15 minutes of your window. Watch for a "10 min out" text.</p>
         <div className="confirm-summary">
           <div><div className="lab">Service</div><div className="val">{svc?.name || 'Signature Detail'}</div></div>
-          <div><div className="lab">When</div><div className="val">{state.date || 'Mar 14'}, {state.time || '10:00 AM'}</div></div>
+          <div><div className="lab">When</div><div className="val">{state.date ? formatDisplayDate(state.date) : 'TBD'}, {state.time || '10:00 AM'}</div></div>
           <div><div className="lab">Where</div><div className="val">{state.address || 'Your address'}</div></div>
         </div>
         <div style={{display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap'}}>
@@ -340,7 +379,7 @@ const BookingFlow = () => {
         customer_id: authUser?.id || null,
         service_id: state.service,
         addons: state.addons,
-        scheduled_date: state.date || `Mar ${state.day}`,
+        scheduled_date: state.date,
         scheduled_time: state.time,
         address: state.address,
         city: state.city,
