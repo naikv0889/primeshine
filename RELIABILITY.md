@@ -5,7 +5,7 @@ Every failure mode hit during development goes here. No code ships without a kno
 ## Architecture decisions
 
 ### RLS on every table
-- All 5 Supabase tables have Row Level Security enabled before any data touches them.
+- All 7 Supabase tables have Row Level Security enabled before any data touches them.
 - Portal users see only their own data via `auth.uid() = customer_id`.
 - Admin users see all data via a role check on the profiles table.
 - If RLS is missing on a new table, the app returns empty arrays, not leaked data. Fail closed.
@@ -46,6 +46,19 @@ Every failure mode hit during development goes here. No code ships without a kno
 - **What happened:** `gh` token expired between sessions. Push failed with "invalid token."
 - **Fix:** Ran `gh auth setup-git` to re-configure the credential helper.
 - **Prevention:** Use `gh auth setup-git` after every `gh auth login` to persist the credential helper.
+
+### AI follow-up endpoint
+- Uses Anthropic API (Claude Haiku 4.5) to generate personalized follow-up texts.
+- Grounded: the model only sees the current customer's data. No cross-customer leakage.
+- Falls back to a static demo message when VITE_ANTHROPIC_API_KEY is not set.
+- Uses `anthropic-dangerous-direct-browser-access` header for client-side calls. In production, this should move to a server-side API route.
+- Follow-up text and timestamp saved to the booking record for audit trail.
+
+### Auth flow (magic link + password)
+- Portal customers use magic link (email OTP) by default. No password to remember.
+- Admin users sign in with email + password (admin role set in profiles table).
+- Auth page at /login with tab toggle between sign-in and sign-up.
+- If Supabase is not configured, Header falls back to demo sign-in flow.
 
 ## Handoff checklist
 

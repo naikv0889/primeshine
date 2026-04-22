@@ -11,6 +11,7 @@ import AboutPage from './pages/AboutPage';
 import FaqPage from './pages/FaqPage';
 import ContactPage from './pages/ContactPage';
 import BookingFlow from './pages/booking/BookingFlow';
+import AuthPage from './pages/AuthPage';
 import PortalPage from './pages/portal/PortalPage';
 import AdminPage from './pages/admin/AdminPage';
 
@@ -44,6 +45,7 @@ const AppRoutes = ({ demoUser, setDemoUser }) => {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/book/:step" element={<BookingFlow />} />
           <Route path="/book" element={<Navigate to="/book/1" replace />} />
+          <Route path="/login" element={<AuthPage />} />
           <Route path="/portal" element={<PortalPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

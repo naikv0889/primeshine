@@ -65,7 +65,7 @@ const Header = ({ user, setUser }) => {
             </>
           ) : (
             <>
-              <Button variant="tertiary" size="sm" onClick={() => { setUser({name:'Sam Rivera', role:'customer', email:'sam@example.com'}); go('portal'); }}>Sign in</Button>
+              <Button variant="tertiary" size="sm" onClick={() => go('login')}>Sign in</Button>
               <Button variant="primary" size="sm" onClick={() => go('book/1')} iconRight="arrow">Book now</Button>
             </>
           )}
