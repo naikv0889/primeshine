@@ -23,7 +23,7 @@ const ScrollToTop = () => {
 
 const AppRoutes = ({ demoUser, setDemoUser }) => {
   const { pathname } = useLocation();
-  const { user: authUser, profile } = useAuth();
+  const { user: authUser, profile, loading, signOut } = useAuth();
   const isDashboard = pathname.startsWith('/portal') || pathname.startsWith('/admin');
 
   // Use real auth when Supabase is configured, otherwise fall back to demo user
@@ -33,7 +33,7 @@ const AppRoutes = ({ demoUser, setDemoUser }) => {
   return (
     <>
       <ScrollToTop />
-      <Header user={user} setUser={setUser} />
+      <Header user={user} setUser={setUser} onSignOut={signOut} />
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -46,8 +46,8 @@ const AppRoutes = ({ demoUser, setDemoUser }) => {
           <Route path="/book/:step" element={<BookingFlow />} />
           <Route path="/book" element={<Navigate to="/book/1" replace />} />
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/portal" element={<PortalPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/portal" element={!loading && !authUser ? <Navigate to="/login" replace /> : <PortalPage />} />
+          <Route path="/admin" element={!loading && !authUser ? <Navigate to="/login" replace /> : !loading && profile?.role !== 'admin' ? <Navigate to="/portal" replace /> : <AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

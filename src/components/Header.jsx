@@ -4,7 +4,7 @@ import { LOGO_FULL, LOGO_BADGE } from './Logo';
 import Icon from './Icon';
 import Button from './Button';
 
-const Header = ({ user, setUser }) => {
+const Header = ({ user, setUser, onSignOut }) => {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -61,6 +61,7 @@ const Header = ({ user, setUser }) => {
           {user ? (
             <>
               <Button variant="tertiary" size="sm" onClick={() => go(user.role === 'admin' ? 'admin' : 'portal')} icon="user">{user.name.split(' ')[0]}</Button>
+              <Button variant="ghost" size="sm" onClick={() => { onSignOut(); go('home'); }}>Sign out</Button>
               <Button variant="primary" size="sm" onClick={() => go('book/1')}>Book now</Button>
             </>
           ) : (
@@ -80,7 +81,14 @@ const Header = ({ user, setUser }) => {
         <a key={id} onClick={() => go(id)}>{id.charAt(0).toUpperCase()+id.slice(1)} <Icon name="arrow" size={16}/></a>
       ))}
       <div style={{display:'flex', gap:12, marginTop:24}}>
-        <Button variant="secondary" onClick={() => go(user?.role === 'admin' ? 'admin' : 'portal')}>Sign in</Button>
+        {user ? (
+          <>
+            <Button variant="secondary" onClick={() => go(user.role === 'admin' ? 'admin' : 'portal')}>{user.name.split(' ')[0]}</Button>
+            <Button variant="ghost" onClick={() => { onSignOut(); go('home'); }}>Sign out</Button>
+          </>
+        ) : (
+          <Button variant="secondary" onClick={() => go('login')}>Sign in</Button>
+        )}
         <Button variant="primary" onClick={() => go('book/1')}>Book now</Button>
       </div>
     </div>

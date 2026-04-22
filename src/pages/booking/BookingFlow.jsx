@@ -6,6 +6,7 @@ import { VEHICLE_ICONS } from '../../data/vehicles';
 import { WEATHER_FORECAST } from '../../data/reviews';
 import { getStripe } from '../../lib/stripe';
 import { createBooking } from '../../lib/api';
+import { useAuth } from '../../lib/AuthContext';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import Eyebrow from '../../components/Eyebrow';
@@ -327,6 +328,7 @@ const BookConfirm = ({ state, navigate, bookingId }) => {
 const BookingFlow = () => {
   const { step } = useParams();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [state, setState] = useState({ service: 'signature', vehicleType: 'sedan', addons: [], day: null, date: null, time: null, make: '', year: '', color: '', notes: '', address: '', city: '', st: 'CA', zip: '' });
   const [bookingId, setBookingId] = useState('B-2053');
   const stepNum = parseInt(step);
@@ -335,6 +337,7 @@ const BookingFlow = () => {
     // When moving to confirmation (step 5), save the booking
     if (n === 5) {
       const bookingData = {
+        customer_id: authUser?.id || null,
         service_id: state.service,
         addons: state.addons,
         scheduled_date: state.date || `Mar ${state.day}`,
