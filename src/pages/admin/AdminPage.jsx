@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/AuthContext';
-import { getAllBookings, getAllReviews, getCustomers, updateBooking } from '../../lib/api';
+import { getAllBookings, getAllReviews, getCustomers, updateBooking, replyToReview } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { generateFollowUp } from '../../lib/ai';
 import { SERVICES, ADDONS } from '../../data/services';
@@ -189,48 +189,75 @@ const AdminCustomerDetail = ({ id, customers, bookings, setDetailId }) => {
   );
 };
 
-const AdminReviewsTab = ({ reviews }) => (
-  <div className="fade-in">
-    <div className="dash-head"><div><h1>Reviews</h1><p className="muted" style={{marginTop:4}}>{reviews.length ? `${(reviews.reduce((s,r) => s + (r.n || r.rating || 0), 0) / reviews.length).toFixed(2)} avg · ${reviews.length} total` : 'No reviews yet'}</p></div>
-      <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="filter" size="sm">All ratings</Button><Button variant="ghost" icon="filter" size="sm">Unreplied</Button></div>
-    </div>
-    <div className="dash-card" style={{marginBottom:24}}>
-      <div style={{display:'grid', gridTemplateColumns:'auto 1fr', gap:48, alignItems:'center'}}>
-        <div style={{textAlign:'center'}}><div style={{fontSize:72, fontWeight:700, color:'var(--navy)', letterSpacing:'-0.03em', lineHeight:1}}>{reviews.length ? (reviews.reduce((s,r) => s + (r.n || r.rating || 0), 0) / reviews.length).toFixed(2) : '—'}</div><Stars n={5} size={18}/><div style={{fontSize:13, color:'var(--text-mute)', marginTop:6}}>Based on {reviews.length} reviews</div></div>
-        <div style={{display:'flex', flexDirection:'column', gap:8}}>
-          {[5,4,3,2,1].map(s => {
-            const count = reviews.filter(r => (r.n || r.rating) === s).length;
-            const pct = reviews.length ? Math.round(count / reviews.length * 100) : 0;
-            return (
-              <div key={s} style={{display:'flex', alignItems:'center', gap:12, fontSize:13}}>
-                <div style={{width:40, display:'flex', gap:4, alignItems:'center'}}>{s}<Icon name="star" size={12} color="#E8A02D"/></div>
-                <div style={{flex:1, height:8, background:'var(--muted)', borderRadius:4, overflow:'hidden'}}><div style={{height:'100%', width:`${pct}%`, background:'#E8A02D', borderRadius:4}}/></div>
-                <div className="mono" style={{width:40, textAlign:'right', color:'var(--text-mute)'}}>{pct}%</div>
-              </div>
-            );
-          })}
+const AdminReviewsTab = ({ reviews, onReply }) => {
+  const [replyingId, setReplyingId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleReply = async (reviewId) => {
+    if (!replyText.trim()) return;
+    setSending(true);
+    await onReply(reviewId, replyText.trim());
+    setSending(false);
+    setReplyingId(null);
+    setReplyText('');
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="dash-head"><div><h1>Reviews</h1><p className="muted" style={{marginTop:4}}>{reviews.length ? `${(reviews.reduce((s,r) => s + (r.n || r.rating || 0), 0) / reviews.length).toFixed(2)} avg · ${reviews.length} total` : 'No reviews yet'}</p></div>
+        <div style={{display:'flex', gap:8}}><Button variant="ghost" icon="filter" size="sm">All ratings</Button><Button variant="ghost" icon="filter" size="sm">Unreplied</Button></div>
+      </div>
+      <div className="dash-card" style={{marginBottom:24}}>
+        <div style={{display:'grid', gridTemplateColumns:'auto 1fr', gap:48, alignItems:'center'}}>
+          <div style={{textAlign:'center'}}><div style={{fontSize:72, fontWeight:700, color:'var(--navy)', letterSpacing:'-0.03em', lineHeight:1}}>{reviews.length ? (reviews.reduce((s,r) => s + (r.n || r.rating || 0), 0) / reviews.length).toFixed(2) : '—'}</div><Stars n={5} size={18}/><div style={{fontSize:13, color:'var(--text-mute)', marginTop:6}}>Based on {reviews.length} reviews</div></div>
+          <div style={{display:'flex', flexDirection:'column', gap:8}}>
+            {[5,4,3,2,1].map(s => {
+              const count = reviews.filter(r => (r.n || r.rating) === s).length;
+              const pct = reviews.length ? Math.round(count / reviews.length * 100) : 0;
+              return (
+                <div key={s} style={{display:'flex', alignItems:'center', gap:12, fontSize:13}}>
+                  <div style={{width:40, display:'flex', gap:4, alignItems:'center'}}>{s}<Icon name="star" size={12} color="#E8A02D"/></div>
+                  <div style={{flex:1, height:8, background:'var(--muted)', borderRadius:4, overflow:'hidden'}}><div style={{height:'100%', width:`${pct}%`, background:'#E8A02D', borderRadius:4}}/></div>
+                  <div className="mono" style={{width:40, textAlign:'right', color:'var(--text-mute)'}}>{pct}%</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
-    <div style={{display:'flex', flexDirection:'column', gap:12}}>
-      {reviews.map((r,i) => (
-        <div key={i} className="dash-card">
-          <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
-            <div style={{display:'flex', gap:12, alignItems:'center'}}>
-              <div style={{width:40, height:40, borderRadius:'50%', background:'var(--navy)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:600}}>{(r.customer || r.profiles?.full_name || '').split(' ').map(n=>n[0]).join('')}</div>
-              <div><div style={{fontWeight:600, color:'var(--navy)'}}>{r.customer || r.profiles?.full_name}</div><div style={{fontSize:12, color:'var(--text-mute)'}}>{r.svc || ''} · {r.date || ''}</div></div>
+      <div style={{display:'flex', flexDirection:'column', gap:12}}>
+        {reviews.map((r,i) => (
+          <div key={r.id || i} className="dash-card">
+            <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
+              <div style={{display:'flex', gap:12, alignItems:'center'}}>
+                <div style={{width:40, height:40, borderRadius:'50%', background:'var(--navy)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:600}}>{(r.customer || r.profiles?.full_name || '').split(' ').map(n=>n[0]).join('')}</div>
+                <div><div style={{fontWeight:600, color:'var(--navy)'}}>{r.customer || r.profiles?.full_name}</div><div style={{fontSize:12, color:'var(--text-mute)'}}>{r.svc || ''} · {r.date || r.created_at?.slice(0,10) || ''}</div></div>
+              </div>
+              <div style={{display:'flex', gap:10, alignItems:'center'}}><Stars n={r.n || r.rating || 5}/>{!r.reply && <span className="badge warn"><span className="dot"/>Needs reply</span>}</div>
             </div>
-            <div style={{display:'flex', gap:10, alignItems:'center'}}><Stars n={r.n || r.rating || 5}/>{!r.replied && !r.reply && <span className="badge warn"><span className="dot"/>Needs reply</span>}</div>
+            <p style={{color:'var(--text)', lineHeight:1.6, marginBottom:12}}>"{r.text || r.body}"</p>
+            {r.reply ? (
+              <div style={{padding:14, background:'var(--muted)', borderRadius:'var(--r-sm)', fontSize:13, borderLeft:'3px solid var(--red)'}}><div style={{fontWeight:600, color:'var(--navy)', marginBottom:4}}>Your reply</div><div style={{color:'var(--text)'}}>{r.reply}</div></div>
+            ) : replyingId === r.id ? (
+              <div className="fade-in">
+                <textarea rows="3" placeholder="Write your reply..." value={replyText} onChange={e => setReplyText(e.target.value)} style={{width:'100%', padding:12, border:'1.5px solid var(--divider-soft)', borderRadius:'var(--r-md)', fontSize:14, fontFamily:'inherit', marginBottom:8, resize:'vertical'}}/>
+                <div style={{display:'flex', gap:8}}>
+                  <Button variant="primary" size="sm" onClick={() => handleReply(r.id)} disabled={sending || !replyText.trim()}>{sending ? 'Sending...' : 'Send reply'}</Button>
+                  <Button variant="tertiary" size="sm" onClick={() => { setReplyingId(null); setReplyText(''); }}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:'flex', gap:8}}>
+                <Button variant="primary" size="sm" icon="message" onClick={() => setReplyingId(r.id)}>Reply</Button>
+              </div>
+            )}
           </div>
-          <p style={{color:'var(--text)', lineHeight:1.6, marginBottom:12}}>"{r.text || r.body}"</p>
-          {(r.replied || r.reply) ? (
-            <div style={{padding:14, background:'var(--muted)', borderRadius:'var(--r-sm)', fontSize:13, borderLeft:'3px solid var(--red)'}}><div style={{fontWeight:600, color:'var(--navy)', marginBottom:4}}>Your reply</div><div style={{color:'var(--text)'}}>{r.reply || `Thanks ${(r.customer || '').split(' ')[0]}, see you next time!`}</div></div>
-          ) : (<div style={{display:'flex', gap:8}}><Button variant="primary" size="sm" icon="message">Reply</Button><Button variant="tertiary" size="sm">Mark as read</Button></div>)}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const AdminServices = () => (
   <div className="fade-in">
@@ -361,6 +388,11 @@ const AdminPage = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleReplyToReview = async (reviewId, reply) => {
+    await replyToReview(reviewId, reply);
+    setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, reply, replied_at: new Date().toISOString() } : r));
+  };
+
   const side = [{id:'dashboard',label:'Dashboard',icon:'home'},{id:'bookings',label:'Bookings',icon:'calendar'},{id:'customers',label:'Customers',icon:'users'},{id:'reviews',label:'Reviews',icon:'star'},{id:'services',label:'Services',icon:'wrench'},{id:'reports',label:'Reports',icon:'trend'},{id:'settings',label:'Settings',icon:'settings'}];
 
   return (
@@ -378,7 +410,7 @@ const AdminPage = () => {
         {!loading && tab === 'bookings' && <AdminBookings bookings={bookings}/>}
         {!loading && tab === 'customers' && !detailId && <AdminCustomers customers={customers} setDetailId={setDetailId} setImportOpen={setImportOpen}/>}
         {!loading && tab === 'customers' && detailId && <AdminCustomerDetail id={detailId} customers={customers} bookings={bookings} setDetailId={setDetailId}/>}
-        {!loading && tab === 'reviews' && <AdminReviewsTab reviews={reviews}/>}
+        {!loading && tab === 'reviews' && <AdminReviewsTab reviews={reviews} onReply={handleReplyToReview}/>}
         {!loading && tab === 'services' && <AdminServices/>}
         {!loading && tab === 'reports' && <AdminReports/>}
         {!loading && tab === 'settings' && <div className="fade-in"><h1>Settings</h1><p className="muted" style={{marginTop:8}}>Workspace configuration.</p></div>}

@@ -82,6 +82,12 @@ export const createReview = async (review) => {
   return { data, error };
 };
 
+export const replyToReview = async (id, reply) => {
+  if (!supabase) return { data: null, error: null };
+  const { data, error } = await supabase.from('reviews').update({ reply, replied_at: new Date().toISOString() }).eq('id', id).select().single();
+  return { data, error };
+};
+
 // --- Customers (admin) ---
 
 export const getCustomers = async () => {
